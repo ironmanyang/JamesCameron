@@ -123,3 +123,23 @@ def save_job_remote_response(series_slug: str, job_id: str, payload: dict[str, A
     response_path = get_job_response_dir(series_slug) / f"{job_id}.response.json"
     write_json_atomic(response_path, payload)
     return relative_to_series_root(response_path, series_root)
+
+
+def delete_job(series_slug: str, job_id: str) -> None:
+    existing = get_job(series_slug, job_id)
+    if existing is None:
+        raise FileNotFoundError(job_id)
+
+    status = str(existing.get("status", "")).strip().lower()
+    remote_task_id = str((existing.get("remote") or {}).get("task_id", "")).strip()
+    protected_statuses = {"submitting", "submitted", "completed"}
+    if remote_task_id or status in protected_statuses:
+        raise ValueError("当前任务已进入远端执行流程，不能直接删除")
+
+    job_path = get_job_path(series_slug, job_id)
+    if job_path.exists():
+        job_path.unlink()
+
+    response_path = get_job_response_dir(series_slug) / f"{job_id}.response.json"
+    if response_path.exists():
+        response_path.unlink()

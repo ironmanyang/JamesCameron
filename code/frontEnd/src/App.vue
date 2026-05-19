@@ -15,6 +15,7 @@ import {
   deleteCharacter,
   deleteCharacterSourceImage,
   deleteEpisode,
+  deleteJob,
   deleteScene,
   deleteSeries,
   deleteShot,
@@ -24,6 +25,7 @@ import {
   getCharacterBible,
   getHealth,
   getJob,
+  getSnapshot,
   getParsedScript,
   getRawScript,
   getScenePromptPackage,
@@ -55,6 +57,7 @@ let shotsRequestSeed = 0;
 let characterBibleRequestSeed = 0;
 let scenePackageRequestSeed = 0;
 let jobDetailRequestSeed = 0;
+let snapshotDetailRequestSeed = 0;
 
 const loading = reactive({
   boot: true,
@@ -92,6 +95,8 @@ const loading = reactive({
   scenePackage: false,
   shotPackage: false,
   jobDetail: false,
+  snapshotDetail: false,
+  deleteJob: false,
   submitJob: false,
   refreshJob: false
 });
@@ -201,6 +206,7 @@ const state = reactive({
   selectedCharacterBible: null,
   selectedScenePackage: null,
   selectedJob: null,
+  selectedSnapshot: null,
   assets: {
     characters: 0,
     scenes: 0,
@@ -250,6 +256,9 @@ const selectedJobResponseText = computed(() =>
 );
 const selectedJobVideoUrl = computed(() => assetUrl(selectedJobComputed.value?.result?.video_path || ""));
 const selectedJobCoverUrl = computed(() => assetUrl(selectedJobComputed.value?.result?.cover_path || ""));
+const selectedSnapshotImageCount = computed(
+  () => state.selectedSnapshot?.resolved_assets?.images?.length || 0
+);
 
 const selectedCharacterImageEntries = computed(() => {
   const images = selectedCharacter.value?.reference_images || {};
@@ -789,6 +798,34 @@ async function loadJobDetail(seriesSlug, jobId) {
   } finally {
     if (requestId === jobDetailRequestSeed) {
       loading.jobDetail = false;
+    }
+  }
+}
+
+async function loadSnapshotDetail(seriesSlug, snapshotId) {
+  const requestId = ++snapshotDetailRequestSeed;
+  if (!seriesSlug || !snapshotId) {
+    state.selectedSnapshot = null;
+    return;
+  }
+
+  loading.snapshotDetail = true;
+  state.selectedSnapshot = null;
+  try {
+    const response = await getSnapshot(seriesSlug, snapshotId);
+    if (requestId !== snapshotDetailRequestSeed || seriesSlug !== state.selectedSeriesSlug) {
+      return;
+    }
+    state.selectedSnapshot = response.item || null;
+  } catch (error) {
+    if (requestId !== snapshotDetailRequestSeed || seriesSlug !== state.selectedSeriesSlug) {
+      return;
+    }
+    state.selectedSnapshot = null;
+    setError(error);
+  } finally {
+    if (requestId === snapshotDetailRequestSeed) {
+      loading.snapshotDetail = false;
     }
   }
 }
@@ -1572,6 +1609,51 @@ async function handleRefreshJob() {
   }
 }
 
+async function handleOpenJobSnapshot(item = selectedJobComputed.value) {
+  const targetJob = item || selectedJobComputed.value;
+  const snapshotId = targetJob?.snapshot_id || "";
+  if (!state.selectedSeriesSlug || !snapshotId) {
+    setError("当前任务没有关联快照");
+    return;
+  }
+
+  if (targetJob?.id && targetJob.id !== state.selectedJobId) {
+    state.selectedJobId = targetJob.id;
+    return;
+  }
+  await loadSnapshotDetail(state.selectedSeriesSlug, snapshotId);
+}
+
+async function handleDeleteJob(item = selectedJobComputed.value) {
+  const targetJob = item || selectedJobComputed.value;
+  const targetJobId = targetJob?.id || "";
+  if (!state.selectedSeriesSlug || !targetJobId) {
+    setError("请先选择一个任务");
+    return;
+  }
+
+  const confirmed = await confirmDanger(`确定删除任务“${targetJobId}”吗？`, "删除任务");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteJob = true;
+  try {
+    await deleteJob(state.selectedSeriesSlug, targetJobId);
+    if (state.selectedJobId === targetJobId) {
+      state.selectedJobId = "";
+      state.selectedJob = null;
+      state.selectedSnapshot = null;
+    }
+    await loadProductionData(state.selectedSeriesSlug);
+    setNotice("任务已删除");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteJob = false;
+  }
+}
+
 async function handleAssembleShotPackage() {
   if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !state.selectedShotId) {
     setError("请先选择一个镜头");
@@ -1609,6 +1691,7 @@ watch(
       state.selectedCharacterBible = null;
       state.selectedScenePackage = null;
       state.selectedJob = null;
+      state.selectedSnapshot = null;
       forms.shotSceneId = "";
       state.rawScript = "";
       state.parsedScriptText = JSON.stringify(defaultParsedScript(""), null, 2);
@@ -1669,6 +1752,8 @@ watch(
   () => state.selectedJobId,
   async (jobId) => {
     await loadJobDetail(state.selectedSeriesSlug, jobId);
+    const job = state.jobs.find((item) => item.id === jobId) || null;
+    await loadSnapshotDetail(state.selectedSeriesSlug, job?.snapshot_id || "");
   }
 );
 
@@ -1771,6 +1856,37 @@ onMounted(boot);
           </div>
         </section>
 
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">反馈</p>
+              <h2>状态面板</h2>
+            </div>
+          </div>
+
+          <p v-if="state.notice" class="message success">{{ state.notice }}</p>
+          <p v-else class="message muted">操作结果和流程提醒会显示在这里。</p>
+          <p v-if="state.error" class="message error">{{ state.error }}</p>
+
+          <div class="meta-list">
+            <div>
+              <span>系列</span>
+              <strong>{{ selectedSeries?.name || "暂无" }}</strong>
+            </div>
+            <div>
+              <span>剧集</span>
+              <strong>{{ selectedEpisode?.name || "暂无" }}</strong>
+            </div>
+            <div>
+              <span>分镜板</span>
+              <strong>{{ selectedStoryboard?.id || "暂无" }}</strong>
+            </div>
+            <div>
+              <span>输出根目录</span>
+              <strong>output/</strong>
+            </div>
+          </div>
+        </section>
       </aside>
 
       <section class="column column-main">
@@ -2337,12 +2453,23 @@ onMounted(boot);
           </div>
 
           <div class="mini-list">
-            <button v-for="item in state.jobs" :key="item.id" class="mini-card selectable"
-              :class="{ active: item.id === state.selectedJobId }" @click="state.selectedJobId = item.id">
-              <strong>{{ item.id }}</strong>
-              <span>{{ formatStatus(item.status) }}</span>
-              <small>{{ item.snapshot_id }}</small>
-            </button>
+            <div v-for="item in state.jobs" :key="item.id" class="mini-card selectable"
+              :class="{ active: item.id === state.selectedJobId }">
+              <div class="item-body" @click="state.selectedJobId = item.id">
+                <strong>{{ item.id }}</strong>
+                <span>{{ formatStatus(item.status) }}</span>
+                <small>关联快照：{{ item.snapshot_id || "暂无" }}</small>
+              </div>
+              <div class="item-actions">
+                <button class="action-button ghost compact-button" @click.stop="handleOpenJobSnapshot(item)">
+                  查看快照
+                </button>
+                <button class="action-button ghost danger compact-button" :disabled="loading.deleteJob"
+                  @click.stop="handleDeleteJob(item)">
+                  {{ loading.deleteJob ? "删除中..." : "删除" }}
+                </button>
+              </div>
+            </div>
             <div v-if="!state.jobs.length" class="empty-state">当前还没有任务草稿。</div>
           </div>
 
@@ -2353,6 +2480,11 @@ onMounted(boot);
                 <h3>{{ selectedJobComputed.id }}</h3>
               </div>
               <div class="inline-actions compact-actions">
+                <button class="action-button ghost"
+                  :disabled="loading.snapshotDetail || !selectedJobComputed.snapshot_id"
+                  @click="handleOpenJobSnapshot()">
+                  {{ loading.snapshotDetail ? "加载中..." : "查看快照" }}
+                </button>
                 <button class="action-button ghost"
                   :disabled="loading.submitJob || loading.jobDetail || selectedJobComputed.status === 'submitting'"
                   @click="handleSubmitJob">
@@ -2402,6 +2534,33 @@ onMounted(boot);
               <div class="meta-row">
                 <span>错误信息</span>
                 <strong>{{ selectedJobComputed.error?.message || "无" }}</strong>
+              </div>
+            </div>
+
+            <div v-if="state.selectedSnapshot" class="meta-panel">
+              <div class="meta-row">
+                <span>关联快照</span>
+                <strong>{{ state.selectedSnapshot.id }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>所属分镜板 / 镜头</span>
+                <strong>{{ state.selectedSnapshot.storyboard_id }} · {{ state.selectedSnapshot.shot_id }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>引用图片数量</span>
+                <strong>{{ selectedSnapshotImageCount }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>镜头卡路径</span>
+                <strong>{{ state.selectedSnapshot.inputs?.shot_card_path || "暂无" }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>角色文件数量</span>
+                <strong>{{ state.selectedSnapshot.inputs?.character_paths?.length || 0 }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>场景文件数量</span>
+                <strong>{{ state.selectedSnapshot.inputs?.scene_paths?.length || 0 }}</strong>
               </div>
             </div>
 

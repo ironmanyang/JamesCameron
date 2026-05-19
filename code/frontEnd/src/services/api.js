@@ -299,6 +299,10 @@ export function createSnapshot(data) {
   });
 }
 
+export function getSnapshot(seriesSlug, snapshotId) {
+  return request(`/api/snapshots/${snapshotId}?series_slug=${encodeURIComponent(seriesSlug)}`);
+}
+
 export function listJobs(seriesSlug) {
   return request(`/api/jobs?series_slug=${encodeURIComponent(seriesSlug)}`);
 }
@@ -321,6 +325,12 @@ export function createVideoJobFromSnapshot(data) {
 
 export function getJob(seriesSlug, jobId) {
   return request(`/api/jobs/${jobId}?series_slug=${encodeURIComponent(seriesSlug)}`);
+}
+
+export function deleteJob(seriesSlug, jobId) {
+  return request(`/api/jobs/${jobId}?series_slug=${encodeURIComponent(seriesSlug)}`, {
+    method: "DELETE"
+  });
 }
 
 export function submitJob(seriesSlug, jobId, provider = {}) {

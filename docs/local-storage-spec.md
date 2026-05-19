@@ -606,6 +606,13 @@ jobs/
 jobs/_responses/{job_id}.response.json
 ```
 
+### 11.5 删除规则
+
+- 任务支持删除本地草稿
+- 如果任务已经生成远端 `task_id`，则不能直接删除
+- 如果任务状态已经进入 `submitting`、`submitted`、`completed`，则不能直接删除
+- 删除任务时，会同时尝试清理 `jobs/_responses/{job_id}.response.json`
+
 ## 12. 最终产出目录
 
 每个系列下预留：

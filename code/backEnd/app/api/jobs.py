@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.services.video_generation import create_video_job_from_snapshot, refresh_video_job, submit_video_job
-from app.storage.job_store import create_job, get_job, list_jobs, update_job
+from app.storage.job_store import create_job, delete_job, get_job, list_jobs, update_job
 
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -95,6 +95,17 @@ async def update_job_api(job_id: str, payload: UpdateJobRequest):
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="任务不存在") from exc
     return {"item": item}
+
+
+@router.delete("/{job_id}")
+async def delete_job_api(job_id: str, series_slug: str = Query(min_length=1)):
+    try:
+        delete_job(series_slug.strip(), job_id.strip())
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
 
 
 @router.post("/{job_id}/submit")
