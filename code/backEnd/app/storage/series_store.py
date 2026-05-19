@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 from app.config import OUTPUT_ROOT
@@ -105,3 +106,22 @@ def update_series_pointer(series_slug: str, pointer_key: str, pointer_value: str
     write_json_atomic(get_series_manifest_path(series_slug), manifest)
     return manifest
 
+
+def update_series(series_slug: str, name: str, description: str = "") -> dict:
+    manifest = get_series(series_slug)
+    if manifest is None:
+        raise FileNotFoundError(series_slug)
+
+    manifest["name"] = name
+    manifest["description"] = description
+    manifest["updated_at"] = utc_now_iso()
+    write_json_atomic(get_series_manifest_path(series_slug), manifest)
+    return manifest
+
+
+def delete_series(series_slug: str) -> None:
+    series_root = get_series_path(series_slug)
+    manifest = get_series(series_slug)
+    if manifest is None:
+        raise FileNotFoundError(series_slug)
+    shutil.rmtree(series_root)

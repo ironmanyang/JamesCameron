@@ -26,6 +26,20 @@ export function createSeries(data) {
   });
 }
 
+export function updateSeries(seriesSlug, data) {
+  return request(`/api/series/${seriesSlug}`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(data)
+  });
+}
+
+export function deleteSeries(seriesSlug) {
+  return request(`/api/series/${seriesSlug}`, {
+    method: "DELETE"
+  });
+}
+
 export function listEpisodes(seriesSlug) {
   return request(`/api/episodes?series_slug=${encodeURIComponent(seriesSlug)}`);
 }
@@ -35,6 +49,23 @@ export function createEpisode(data) {
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify(data)
+  });
+}
+
+export function updateEpisode(seriesSlug, episodeId, data) {
+  return request(`/api/episodes/${episodeId}`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      ...data
+    })
+  });
+}
+
+export function deleteEpisode(seriesSlug, episodeId) {
+  return request(`/api/episodes/${episodeId}?series_slug=${encodeURIComponent(seriesSlug)}`, {
+    method: "DELETE"
   });
 }
 
@@ -90,6 +121,23 @@ export function createCharacter(data) {
   });
 }
 
+export function updateCharacter(seriesSlug, characterId, data) {
+  return request(`/api/characters/${characterId}`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      ...data
+    })
+  });
+}
+
+export function deleteCharacter(seriesSlug, characterId) {
+  return request(`/api/characters/${characterId}?series_slug=${encodeURIComponent(seriesSlug)}`, {
+    method: "DELETE"
+  });
+}
+
 export function getCharacterBible(seriesSlug, characterId) {
   return request(`/api/characters/${characterId}/bible?series_slug=${encodeURIComponent(seriesSlug)}`);
 }
@@ -127,6 +175,15 @@ export async function uploadCharacterSourceImages(seriesSlug, characterId, files
   return payload;
 }
 
+export function deleteCharacterSourceImage(seriesSlug, characterId, imagePath) {
+  return request(
+    `/api/characters/${characterId}/source-images?series_slug=${encodeURIComponent(seriesSlug)}&image_path=${encodeURIComponent(imagePath)}`,
+    {
+      method: "DELETE"
+    }
+  );
+}
+
 export function listScenes(seriesSlug) {
   return request(`/api/scenes?series_slug=${encodeURIComponent(seriesSlug)}`);
 }
@@ -136,6 +193,23 @@ export function createScene(data) {
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify(data)
+  });
+}
+
+export function updateScene(seriesSlug, sceneId, data) {
+  return request(`/api/scenes/${sceneId}/meta`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      ...data
+    })
+  });
+}
+
+export function deleteScene(seriesSlug, sceneId) {
+  return request(`/api/scenes/${sceneId}?series_slug=${encodeURIComponent(seriesSlug)}`, {
+    method: "DELETE"
   });
 }
 
@@ -166,6 +240,12 @@ export function createStoryboard(data) {
   });
 }
 
+export function deleteStoryboard(seriesSlug, storyboardId) {
+  return request(`/api/storyboards/${storyboardId}?series_slug=${encodeURIComponent(seriesSlug)}`, {
+    method: "DELETE"
+  });
+}
+
 export function listShots(seriesSlug, storyboardId) {
   return request(`/api/storyboards/${storyboardId}/shots?series_slug=${encodeURIComponent(seriesSlug)}`);
 }
@@ -179,6 +259,26 @@ export function createShot(seriesSlug, storyboardId, data) {
       ...data
     })
   });
+}
+
+export function updateShot(seriesSlug, storyboardId, shotId, shotData) {
+  return request(`/api/storyboards/${storyboardId}/shots/${shotId}`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      shot_data: shotData
+    })
+  });
+}
+
+export function deleteShot(seriesSlug, storyboardId, shotId) {
+  return request(
+    `/api/storyboards/${storyboardId}/shots/${shotId}?series_slug=${encodeURIComponent(seriesSlug)}`,
+    {
+      method: "DELETE"
+    }
+  );
 }
 
 export function assembleShotPackage(seriesSlug, storyboardId, shotId) {

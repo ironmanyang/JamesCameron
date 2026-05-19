@@ -55,7 +55,7 @@ async def create_job_api(payload: CreateJobRequest):
             provider=payload.provider,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Job source not found") from exc
+        raise HTTPException(status_code=404, detail="任务来源数据不存在") from exc
     return {"item": item}
 
 
@@ -70,7 +70,7 @@ async def create_job_from_snapshot_api(payload: CreateJobFromSnapshotRequest):
             auto_submit=payload.auto_submit,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Snapshot not found") from exc
+        raise HTTPException(status_code=404, detail="快照不存在") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"item": item}
@@ -80,7 +80,7 @@ async def create_job_from_snapshot_api(payload: CreateJobFromSnapshotRequest):
 async def get_job_api(job_id: str, series_slug: str = Query(min_length=1)):
     item = get_job(series_slug.strip(), job_id.strip())
     if item is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="任务不存在")
     return {"item": item}
 
 
@@ -93,7 +93,7 @@ async def update_job_api(job_id: str, payload: UpdateJobRequest):
             updates=payload.updates,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Job not found") from exc
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
     return {"item": item}
 
 
@@ -106,7 +106,7 @@ async def submit_job_api(job_id: str, payload: SubmitJobRequest):
             provider_override=payload.provider,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Job not found") from exc
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"item": item}
@@ -121,7 +121,7 @@ async def refresh_job_api(job_id: str, payload: RefreshJobRequest):
             provider_override=payload.provider,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Job not found") from exc
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"item": item}

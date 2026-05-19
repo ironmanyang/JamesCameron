@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -208,3 +209,56 @@ def save_shot(series_slug: str, storyboard_id: str, shot_id: str, shot_data: dic
     storyboard["updated_at"] = utc_now_iso()
     write_json_atomic(get_storyboard_manifest_path(series_slug, storyboard_id), storyboard)
     return merged
+
+
+def delete_storyboard(series_slug: str, storyboard_id: str) -> None:
+    storyboard = get_storyboard(series_slug, storyboard_id)
+    if storyboard is None:
+        raise FileNotFoundError(storyboard_id)
+
+    from app.storage.job_store import list_jobs
+    from app.storage.snapshot_store import list_snapshots
+
+    linked_snapshots = [item["id"] for item in list_snapshots(series_slug) if item.get("storyboard_id") == storyboard_id]
+    if linked_snapshots:
+        raise ValueError(f"当前分镜板仍被快照引用，无法删除：{', '.join(linked_snapshots[:5])}")
+
+    linked_jobs: list[str] = []
+    snapshot_id_set = {item.get("id", "") for item in list_snapshots(series_slug) if item.get("storyboard_id") == storyboard_id}
+    for job in list_jobs(series_slug):
+        if job.get("snapshot_id") in snapshot_id_set:
+            linked_jobs.append(job["id"])
+    if linked_jobs:
+        raise ValueError(f"当前分镜板仍被任务引用，无法删除：{', '.join(linked_jobs[:5])}")
+
+    shutil.rmtree(get_storyboard_dir(series_slug, storyboard_id))
+
+
+def delete_shot(series_slug: str, storyboard_id: str, shot_id: str) -> None:
+    storyboard = get_storyboard(series_slug, storyboard_id)
+    if storyboard is None:
+        raise FileNotFoundError(storyboard_id)
+
+    shot = get_shot(series_slug, storyboard_id, shot_id)
+    if shot is None:
+        raise FileNotFoundError(shot_id)
+
+    from app.storage.job_store import list_jobs
+    from app.storage.snapshot_store import list_snapshots
+
+    linked_snapshots = [item["id"] for item in list_snapshots(series_slug) if item.get("shot_id") == shot_id]
+    if linked_snapshots:
+        raise ValueError(f"当前镜头仍被快照引用，无法删除：{', '.join(linked_snapshots[:5])}")
+
+    linked_jobs: list[str] = []
+    snapshot_id_set = {item.get("id", "") for item in list_snapshots(series_slug) if item.get("shot_id") == shot_id}
+    for job in list_jobs(series_slug):
+        if job.get("snapshot_id") in snapshot_id_set:
+            linked_jobs.append(job["id"])
+    if linked_jobs:
+        raise ValueError(f"当前镜头仍被任务引用，无法删除：{', '.join(linked_jobs[:5])}")
+
+    get_shot_path(series_slug, storyboard_id, shot_id).unlink()
+    storyboard["shot_ids"] = [item for item in storyboard.get("shot_ids", []) if item != shot_id]
+    storyboard["updated_at"] = utc_now_iso()
+    write_json_atomic(get_storyboard_manifest_path(series_slug, storyboard_id), storyboard)

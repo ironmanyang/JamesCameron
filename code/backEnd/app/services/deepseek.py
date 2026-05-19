@@ -171,7 +171,7 @@ def _normalize_parsed_script(payload: dict[str, Any], episode_id: str, episode_n
 def analyze_script_with_deepseek(raw_text: str, episode_id: str, episode_name: str) -> dict[str, Any]:
     api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("Missing DEEPSEEK_API_KEY")
+        raise ValueError("缺少 DEEPSEEK_API_KEY 配置")
 
     base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
     model = os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-chat")
@@ -202,16 +202,16 @@ def analyze_script_with_deepseek(raw_text: str, episode_id: str, episode_name: s
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
-        raise ValueError(f"DeepSeek request failed: {response.text}") from exc
+        raise ValueError(f"DeepSeek 请求失败：{response.text}") from exc
 
     payload = response.json()
     content = payload.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
     if not content:
-        raise ValueError("DeepSeek returned empty content")
+        raise ValueError("DeepSeek 返回内容为空")
 
     try:
         parsed = json.loads(_extract_json_block(content))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Failed to parse DeepSeek JSON response: {content}") from exc
+        raise ValueError(f"DeepSeek JSON 解析失败：{content}") from exc
 
     return _normalize_parsed_script(parsed, episode_id=episode_id, episode_name=episode_name)

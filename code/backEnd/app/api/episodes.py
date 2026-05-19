@@ -6,12 +6,14 @@ from pydantic import BaseModel, Field
 from app.services.deepseek import analyze_script_with_deepseek
 from app.storage.episode_store import (
     create_episode,
+    delete_episode,
     get_episode,
     load_parsed_script,
     load_raw_script,
     list_episodes,
     save_parsed_script,
     save_raw_script,
+    update_episode,
 )
 
 
@@ -38,6 +40,11 @@ class AnalyzeScriptRequest(BaseModel):
     series_slug: str = Field(min_length=1)
 
 
+class UpdateEpisodeRequest(BaseModel):
+    series_slug: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=120)
+
+
 @router.get("")
 async def list_episodes_api(series_slug: str = Query(min_length=1)):
     return {"items": list_episodes(series_slug.strip())}
@@ -52,7 +59,7 @@ async def create_episode_api(payload: CreateEpisodeRequest):
             episode_number=payload.episode_number,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Series not found") from exc
+        raise HTTPException(status_code=404, detail="系列不存在") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"item": item}
@@ -62,8 +69,32 @@ async def create_episode_api(payload: CreateEpisodeRequest):
 async def get_episode_api(episode_id: str, series_slug: str = Query(min_length=1)):
     item = get_episode(series_slug.strip(), episode_id.strip())
     if item is None:
-        raise HTTPException(status_code=404, detail="Episode not found")
+        raise HTTPException(status_code=404, detail="剧集不存在")
     return {"item": item}
+
+
+@router.put("/{episode_id}")
+async def update_episode_api(episode_id: str, payload: UpdateEpisodeRequest):
+    try:
+        item = update_episode(
+            series_slug=payload.series_slug.strip(),
+            episode_id=episode_id.strip(),
+            name=payload.name.strip(),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="剧集不存在") from exc
+    return {"item": item}
+
+
+@router.delete("/{episode_id}")
+async def delete_episode_api(episode_id: str, series_slug: str = Query(min_length=1)):
+    try:
+        delete_episode(series_slug.strip(), episode_id.strip())
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="剧集不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
 
 
 @router.get("/{episode_id}/raw-script")
@@ -71,7 +102,7 @@ async def get_raw_script_api(episode_id: str, series_slug: str = Query(min_lengt
     try:
         content = load_raw_script(series_slug.strip(), episode_id.strip())
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Episode not found") from exc
+        raise HTTPException(status_code=404, detail="剧集不存在") from exc
     return {"content": content}
 
 
@@ -80,7 +111,7 @@ async def get_parsed_script_api(episode_id: str, series_slug: str = Query(min_le
     try:
         content = load_parsed_script(series_slug.strip(), episode_id.strip())
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Episode not found") from exc
+        raise HTTPException(status_code=404, detail="剧集不存在") from exc
     return {"content": content}
 
 
@@ -93,7 +124,7 @@ async def save_raw_script_api(episode_id: str, payload: SaveRawScriptRequest):
             raw_text=payload.raw_text,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Episode not found") from exc
+        raise HTTPException(status_code=404, detail="剧集不存在") from exc
     return {"item": item}
 
 
@@ -106,7 +137,7 @@ async def save_parsed_script_api(episode_id: str, payload: SaveParsedScriptReque
             parsed_script=payload.parsed_script,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Episode not found") from exc
+        raise HTTPException(status_code=404, detail="剧集不存在") from exc
     return {"item": item}
 
 
@@ -121,7 +152,7 @@ async def analyze_script_api(episode_id: str, payload: AnalyzeScriptRequest):
 
         raw_text = load_raw_script(series_slug, normalized_episode_id).strip()
         if not raw_text:
-            raise ValueError("Raw script is empty")
+            raise ValueError("原始剧本为空，请先填写剧本内容")
 
         parsed_script = analyze_script_with_deepseek(
             raw_text=raw_text,
@@ -134,7 +165,7 @@ async def analyze_script_api(episode_id: str, payload: AnalyzeScriptRequest):
             parsed_script=parsed_script,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Episode not found") from exc
+        raise HTTPException(status_code=404, detail="剧集不存在") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"item": item, "parsed_script": parsed_script}

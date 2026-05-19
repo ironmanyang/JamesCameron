@@ -70,7 +70,7 @@ class ImageProviderError(Exception):
 def _get_deepseek_settings() -> tuple[str, str, str]:
     api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("Missing DEEPSEEK_API_KEY")
+        raise ValueError("缺少 DEEPSEEK_API_KEY 配置")
     base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
     model = os.getenv("DEEPSEEK_CHARACTER_MODEL", os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-chat")).strip()
     return api_key, base_url, model
@@ -79,7 +79,7 @@ def _get_deepseek_settings() -> tuple[str, str, str]:
 def _get_gpt_image_settings() -> tuple[str, str, str]:
     api_key = os.getenv("GPT_IMAGE_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("Missing GPT_IMAGE_API_KEY")
+        raise ValueError("缺少 GPT_IMAGE_API_KEY 配置")
     base_url = os.getenv("GPT_IMAGE_BASE_URL", "https://www.packyapi.com/v1").rstrip("/")
     model = os.getenv("GPT_IMAGE_MODEL", "gpt-image-2").strip()
     return api_key, base_url, model
@@ -162,10 +162,10 @@ def _raise_provider_http_error(response: requests.Response, action: str) -> None
         if detail:
             detail = detail[:600]
             raise ImageProviderError(
-                f"PackyAPI {action} failed with HTTP {response.status_code}: {detail}"
+                f"PackyAPI {action} 请求失败，HTTP {response.status_code}：{detail}"
             ) from exc
         raise ImageProviderError(
-            f"PackyAPI {action} failed with HTTP {response.status_code}"
+            f"PackyAPI {action} 请求失败，HTTP {response.status_code}"
         ) from exc
 
 
@@ -173,7 +173,7 @@ def _parse_provider_payload(response: requests.Response, action: str) -> dict[st
     try:
         return response.json()
     except ValueError as exc:
-        raise ImageProviderError(f"PackyAPI {action} returned invalid JSON") from exc
+        raise ImageProviderError(f"PackyAPI {action} 返回了无效 JSON") from exc
 
 
 def _strip_code_fences(content: str) -> str:
@@ -372,9 +372,9 @@ def _resolve_generation_mode(requested_mode: str | None, has_source_image: bool)
         CHARACTER_GENERATION_MODE_REFERENCE_SUBJECT_ONLY,
     }
     if mode not in allowed:
-        raise ValueError(f"Unsupported character generation mode: {requested_mode}")
+        raise ValueError(f"不支持的角色生成模式：{requested_mode}")
     if mode == CHARACTER_GENERATION_MODE_REFERENCE_SUBJECT_ONLY and not has_source_image:
-        raise ValueError("Reference-subject-only mode requires at least one uploaded source image")
+        raise ValueError("仅按参考图生成模式至少需要上传一张参考图")
     return mode
 
 
@@ -407,16 +407,16 @@ def _generate_character_package(name: str, brief: str, context: str) -> dict[str
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
-        raise ValueError(f"DeepSeek character generation failed: {response.text}") from exc
+        raise ValueError(f"DeepSeek 角色生成失败：{response.text}") from exc
 
     content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
     if not content.strip():
-        raise ValueError("DeepSeek returned empty character package")
+        raise ValueError("DeepSeek 返回的角色设定为空")
 
     try:
         payload = _extract_json_payload(content)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Failed to parse character JSON: {content}") from exc
+        raise ValueError(f"角色 JSON 解析失败：{content}") from exc
 
     return _normalize_character_package(payload, name, brief)
 
@@ -430,7 +430,7 @@ def _decode_image_payload(item: dict[str, Any], session: requests.Session) -> by
             response = session.get(item["url"], timeout=180)
             response.raise_for_status()
         except requests.RequestException as exc:
-            raise ImageProviderError(f"PackyAPI image download failed: {exc}") from exc
+            raise ImageProviderError(f"PackyAPI 图片下载失败：{exc}") from exc
         return response.content
 
     raise ImageProviderError("PackyAPI returned neither b64_json nor url")
@@ -453,7 +453,7 @@ def _generate_reference_image(prompt: str, size: str) -> bytes:
                 timeout=300,
             )
         except requests.RequestException as exc:
-            raise ImageProviderError(f"PackyAPI image generation connection failed: {exc}") from exc
+            raise ImageProviderError(f"PackyAPI 文生图连接失败：{exc}") from exc
         _raise_provider_http_error(response, "image generation")
         payload = _parse_provider_payload(response, "image generation")
         data = payload.get("data") or []
@@ -483,7 +483,7 @@ def _generate_reference_image_from_source(prompt: str, size: str, source_bytes: 
                 timeout=300,
             )
         except requests.RequestException as exc:
-            raise ImageProviderError(f"PackyAPI image edit connection failed: {exc}") from exc
+            raise ImageProviderError(f"PackyAPI 图生图连接失败：{exc}") from exc
         _raise_provider_http_error(response, "image edit")
         payload = _parse_provider_payload(response, "image edit")
         data = payload.get("data") or []

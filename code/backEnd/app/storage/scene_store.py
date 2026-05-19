@@ -1,9 +1,11 @@
+import shutil
 from pathlib import Path
 from typing import Any
 
 from app.storage.common import read_json, relative_to_series_root, utc_now_iso, write_json_atomic
 from app.storage.naming import ensure_unique_id, make_entity_id
 from app.storage.series_store import get_series, get_series_path
+from app.storage.storyboard_store import list_shots, list_storyboards
 
 
 def get_scenes_root(series_slug: str) -> Path:
@@ -201,3 +203,33 @@ def save_scene_assets(
     write_json_atomic(get_scene_manifest_path(series_slug, scene_id), manifest)
     write_json_atomic(versions_dir / f"scene_v{version:03d}.json", manifest)
     return manifest
+
+
+def update_scene(series_slug: str, scene_id: str, name: str, description: str = "", episode_id: str = "") -> dict:
+    manifest = get_scene(series_slug, scene_id)
+    if manifest is None:
+        raise FileNotFoundError(scene_id)
+
+    manifest["name"] = name
+    manifest["description"] = description
+    manifest["episode_id"] = episode_id
+    manifest["updated_at"] = utc_now_iso()
+    write_json_atomic(get_scene_manifest_path(series_slug, scene_id), manifest)
+    return manifest
+
+
+def delete_scene(series_slug: str, scene_id: str) -> None:
+    manifest = get_scene(series_slug, scene_id)
+    if manifest is None:
+        raise FileNotFoundError(scene_id)
+
+    linked_shots: list[str] = []
+    for storyboard in list_storyboards(series_slug):
+        for shot in list_shots(series_slug, storyboard["id"]):
+            if shot.get("scene_id") == scene_id:
+                linked_shots.append(shot["id"])
+
+    if linked_shots:
+        raise ValueError(f"当前场景仍被镜头引用，无法删除：{', '.join(linked_shots[:5])}")
+
+    shutil.rmtree(get_scene_dir(series_slug, scene_id))

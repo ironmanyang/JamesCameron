@@ -159,7 +159,7 @@ def _download_asset_to_series_output(
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
-        raise ValueError(f"Asset download failed: {response.text}") from exc
+        raise ValueError(f"资源下载失败：{response.text}") from exc
 
     series_root = get_series_path(series_slug)
     relative_path = f"outputs/{output_subdir}/{file_stem}{_guess_extension(url, default_extension)}"
@@ -172,7 +172,7 @@ def _submit_generic_http(provider: dict[str, Any], request_body: dict[str, Any])
     base_url = str(provider.get("base_url", "")).rstrip("/")
     path = str(provider.get("path", "/")).strip() or "/"
     if not base_url:
-        raise ValueError("Missing VIDEO_PROVIDER_BASE_URL")
+        raise ValueError("缺少 VIDEO_PROVIDER_BASE_URL 配置")
 
     response = requests.post(
         _provider_url(base_url, path),
@@ -183,7 +183,7 @@ def _submit_generic_http(provider: dict[str, Any], request_body: dict[str, Any])
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
-        raise ValueError(f"Video provider request failed: {response.text}") from exc
+        raise ValueError(f"视频供应商请求失败：{response.text}") from exc
 
     return response.json() if response.content else {}
 
@@ -191,9 +191,9 @@ def _submit_generic_http(provider: dict[str, Any], request_body: dict[str, Any])
 def _fetch_generic_http_status(provider: dict[str, Any], task_id: str) -> dict[str, Any]:
     base_url = str(provider.get("base_url", "")).rstrip("/")
     if not base_url:
-        raise ValueError("Missing VIDEO_PROVIDER_BASE_URL")
+        raise ValueError("缺少 VIDEO_PROVIDER_BASE_URL 配置")
     if not task_id:
-        raise ValueError("Job remote task_id is empty")
+        raise ValueError("任务远端 task_id 为空")
 
     status_path = str(provider.get("status_path", "")).strip() or str(provider.get("path", "/")).strip() or "/"
     status_method = str(provider.get("status_method", "GET")).strip().upper() or "GET"
@@ -219,7 +219,7 @@ def _fetch_generic_http_status(provider: dict[str, Any], task_id: str) -> dict[s
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
-        raise ValueError(f"Video status request failed: {response.text}") from exc
+        raise ValueError(f"视频状态请求失败：{response.text}") from exc
 
     return response.json() if response.content else {}
 
@@ -331,7 +331,7 @@ def submit_video_job(series_slug: str, job_id: str, provider_override: dict[str,
 
     request_body = ((job.get("provider") or {}).get("request_body") or {})
     if not request_body:
-        raise ValueError("Job request body is empty")
+        raise ValueError("任务请求体为空")
 
     provider = _merge_provider_settings((job.get("provider") or {}))
     provider = _merge_provider_settings({**provider, **(provider_override or {})})

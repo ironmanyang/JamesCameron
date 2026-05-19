@@ -1,9 +1,11 @@
+import shutil
 from pathlib import Path
 from typing import Any
 
 from app.storage.common import read_json, relative_to_series_root, utc_now_iso, write_json_atomic
 from app.storage.naming import ensure_unique_id, make_entity_id
 from app.storage.series_store import get_series, get_series_path
+from app.storage.storyboard_store import list_shots, list_storyboards
 
 
 def get_characters_root(series_slug: str) -> Path:
@@ -248,3 +250,55 @@ def save_character_source_images(series_slug: str, character_id: str, source_ima
     bible["source_images"] = source_images
     write_json_atomic(get_character_bible_path(series_slug, character_id), bible)
     return manifest
+
+
+def update_character(series_slug: str, character_id: str, name: str, brief: str = "") -> dict:
+    manifest = get_character(series_slug, character_id)
+    if manifest is None:
+        raise FileNotFoundError(character_id)
+
+    manifest["name"] = name
+    manifest["brief"] = brief
+    manifest["updated_at"] = utc_now_iso()
+    write_json_atomic(get_character_manifest_path(series_slug, character_id), manifest)
+
+    bible = get_character_bible(series_slug, character_id)
+    bible["brief"] = brief
+    write_json_atomic(get_character_bible_path(series_slug, character_id), bible)
+    return manifest
+
+
+def delete_character(series_slug: str, character_id: str) -> None:
+    manifest = get_character(series_slug, character_id)
+    if manifest is None:
+        raise FileNotFoundError(character_id)
+
+    linked_shots: list[str] = []
+    for storyboard in list_storyboards(series_slug):
+        for shot in list_shots(series_slug, storyboard["id"]):
+            if character_id in (shot.get("characters") or []):
+                linked_shots.append(shot["id"])
+
+    if linked_shots:
+        raise ValueError(f"当前角色仍被镜头引用，无法删除：{', '.join(linked_shots[:5])}")
+
+    shutil.rmtree(get_character_dir(series_slug, character_id))
+
+
+def delete_character_source_image(series_slug: str, character_id: str, image_path: str) -> dict:
+    manifest = get_character(series_slug, character_id)
+    if manifest is None:
+        raise FileNotFoundError(character_id)
+
+    normalized_path = image_path.strip()
+    source_images = list(manifest.get("source_images") or [])
+    matched_item = next((item for item in source_images if str(item.get("path", "")).strip() == normalized_path), None)
+    if matched_item is None:
+        raise FileNotFoundError(normalized_path)
+
+    absolute_path = get_series_path(series_slug) / normalized_path
+    if absolute_path.exists():
+        absolute_path.unlink()
+
+    remaining = [item for item in source_images if str(item.get("path", "")).strip() != normalized_path]
+    return save_character_source_images(series_slug, character_id, remaining)

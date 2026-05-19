@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,8 @@ from app.storage.common import (
 )
 from app.storage.naming import next_episode_id
 from app.storage.series_store import get_series, get_series_path, update_series_pointer
+from app.storage.scene_store import list_scenes
+from app.storage.storyboard_store import list_storyboards
 
 
 def get_episode_dir(series_slug: str, episode_id: str) -> Path:
@@ -55,7 +58,7 @@ def create_episode(series_slug: str, name: str = "", episode_number: int | None 
     else:
         episode_id = f"ep_{episode_number:03d}"
         if episode_id in existing_ids:
-            raise ValueError(f"Episode already exists: {episode_id}")
+            raise ValueError(f"剧集已存在：{episode_id}")
 
     now = utc_now_iso()
     episode_dir = get_episode_dir(series_slug, episode_id)
@@ -156,3 +159,30 @@ def load_parsed_script(series_slug: str, episode_id: str) -> dict[str, Any]:
     if not parsed_path.exists():
         return {}
     return read_json(parsed_path)
+
+
+def update_episode(series_slug: str, episode_id: str, name: str) -> dict:
+    manifest = get_episode(series_slug, episode_id)
+    if manifest is None:
+        raise FileNotFoundError(episode_id)
+
+    manifest["name"] = name
+    manifest["updated_at"] = utc_now_iso()
+    write_json_atomic(get_episode_manifest_path(series_slug, episode_id), manifest)
+    return manifest
+
+
+def delete_episode(series_slug: str, episode_id: str) -> None:
+    manifest = get_episode(series_slug, episode_id)
+    if manifest is None:
+        raise FileNotFoundError(episode_id)
+
+    linked_scenes = [item["id"] for item in list_scenes(series_slug) if item.get("episode_id") == episode_id]
+    if linked_scenes:
+        raise ValueError(f"当前剧集仍被场景引用，无法删除：{', '.join(linked_scenes[:5])}")
+
+    linked_storyboards = [item["id"] for item in list_storyboards(series_slug) if item.get("episode_id") == episode_id]
+    if linked_storyboards:
+        raise ValueError(f"当前剧集仍被分镜板引用，无法删除：{', '.join(linked_storyboards[:5])}")
+
+    shutil.rmtree(get_episode_dir(series_slug, episode_id))

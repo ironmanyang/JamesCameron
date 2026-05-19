@@ -55,7 +55,7 @@ Story context:
 def _get_deepseek_settings() -> tuple[str, str, str]:
     api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("Missing DEEPSEEK_API_KEY")
+        raise ValueError("缺少 DEEPSEEK_API_KEY 配置")
     base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
     model = os.getenv("DEEPSEEK_SCENE_MODEL", os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-chat")).strip()
     return api_key, base_url, model
@@ -64,7 +64,7 @@ def _get_deepseek_settings() -> tuple[str, str, str]:
 def _get_scene_image_settings() -> tuple[str, str, str]:
     api_key = os.getenv("SCENE_IMAGE_API_KEY", os.getenv("GPT_IMAGE_API_KEY", "")).strip()
     if not api_key:
-        raise ValueError("Missing SCENE_IMAGE_API_KEY or GPT_IMAGE_API_KEY")
+        raise ValueError("缺少 SCENE_IMAGE_API_KEY 或 GPT_IMAGE_API_KEY 配置")
     base_url = os.getenv("SCENE_IMAGE_BASE_URL", os.getenv("GPT_IMAGE_BASE_URL", "https://www.packyapi.com/v1")).rstrip("/")
     model = os.getenv("SCENE_IMAGE_MODEL", os.getenv("GPT_IMAGE_MODEL", "gpt-image-2")).strip()
     return api_key, base_url, model
@@ -320,16 +320,16 @@ def _generate_scene_package(name: str, description: str, context: str) -> dict[s
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
-        raise ValueError(f"DeepSeek scene generation failed: {response.text}") from exc
+        raise ValueError(f"DeepSeek 场景生成失败：{response.text}") from exc
 
     content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
     if not content.strip():
-        raise ValueError("DeepSeek returned empty scene package")
+        raise ValueError("DeepSeek 返回的场景包为空")
 
     try:
         payload = _extract_json_payload(content)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Failed to parse scene JSON: {content}") from exc
+        raise ValueError(f"场景 JSON 解析失败：{content}") from exc
 
     return _normalize_scene_package(payload, name, description)
 
@@ -343,7 +343,7 @@ def _decode_image_payload(item: dict[str, Any], session: requests.Session) -> by
         response.raise_for_status()
         return response.content
 
-    raise ValueError("Image provider returned neither b64_json nor url")
+    raise ValueError("图片供应商返回结果中既没有 b64_json，也没有 url")
 
 
 def _generate_reference_image(prompt: str, size: str) -> bytes:
@@ -363,12 +363,12 @@ def _generate_reference_image(prompt: str, size: str) -> bytes:
         try:
             response.raise_for_status()
         except requests.HTTPError as exc:
-            raise ValueError(f"Scene image request failed: {response.text}") from exc
+            raise ValueError(f"场景图片请求失败：{response.text}") from exc
 
         response_payload = response.json()
         data = response_payload.get("data") or []
         if not data:
-            raise ValueError("Scene image provider returned no image data")
+            raise ValueError("场景图片供应商没有返回图片数据")
         return _decode_image_payload(data[0], session)
 
 

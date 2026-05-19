@@ -8,12 +8,15 @@ from pydantic import BaseModel, Field
 from app.services.character_generation import ImageProviderError, generate_character_assets
 from app.storage.character_store import (
     create_character,
+    delete_character,
+    delete_character_source_image,
     get_character,
     get_character_bible,
     get_character_source_uploads_dir,
     list_characters,
     save_character_bible,
     save_character_source_images,
+    update_character,
 )
 from app.storage.common import relative_to_series_root, utc_now_iso, write_bytes_atomic
 from app.storage.series_store import get_series_path
@@ -39,6 +42,12 @@ class GenerateCharacterAssetsRequest(BaseModel):
     generation_mode: str = Field(default="reference_plus_text")
 
 
+class UpdateCharacterRequest(BaseModel):
+    series_slug: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=120)
+    brief: str = Field(default="", max_length=2000)
+
+
 @router.get("")
 async def list_characters_api(series_slug: str = Query(min_length=1)):
     return {"items": list_characters(series_slug.strip())}
@@ -53,7 +62,7 @@ async def create_character_api(payload: CreateCharacterRequest):
             brief=payload.brief.strip(),
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Series not found") from exc
+        raise HTTPException(status_code=404, detail="系列不存在") from exc
     return {"item": item}
 
 
@@ -61,15 +70,40 @@ async def create_character_api(payload: CreateCharacterRequest):
 async def get_character_api(character_id: str, series_slug: str = Query(min_length=1)):
     item = get_character(series_slug.strip(), character_id.strip())
     if item is None:
-        raise HTTPException(status_code=404, detail="Character not found")
+        raise HTTPException(status_code=404, detail="角色不存在")
     return {"item": item}
+
+
+@router.put("/{character_id}")
+async def update_character_api(character_id: str, payload: UpdateCharacterRequest):
+    try:
+        item = update_character(
+            series_slug=payload.series_slug.strip(),
+            character_id=character_id.strip(),
+            name=payload.name.strip(),
+            brief=payload.brief.strip(),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="角色不存在") from exc
+    return {"item": item}
+
+
+@router.delete("/{character_id}")
+async def delete_character_api(character_id: str, series_slug: str = Query(min_length=1)):
+    try:
+        delete_character(series_slug.strip(), character_id.strip())
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="角色不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
 
 
 @router.get("/{character_id}/bible")
 async def get_character_bible_api(character_id: str, series_slug: str = Query(min_length=1)):
     item = get_character(series_slug.strip(), character_id.strip())
     if item is None:
-        raise HTTPException(status_code=404, detail="Character not found")
+        raise HTTPException(status_code=404, detail="角色不存在")
     return {"item": get_character_bible(series_slug.strip(), character_id.strip())}
 
 
@@ -82,7 +116,7 @@ async def save_character_bible_api(character_id: str, payload: SaveCharacterBibl
             bible_data=payload.bible_data,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Character not found") from exc
+        raise HTTPException(status_code=404, detail="角色不存在") from exc
     return {"item": item}
 
 
@@ -96,7 +130,7 @@ async def generate_character_assets_api(character_id: str, payload: GenerateChar
             generation_mode=payload.generation_mode.strip(),
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Character not found") from exc
+        raise HTTPException(status_code=404, detail="角色不存在") from exc
     except ImageProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ValueError as exc:
@@ -114,10 +148,10 @@ async def upload_character_source_images_api(
     normalized_character_id = character_id.strip()
     character = get_character(normalized_series_slug, normalized_character_id)
     if character is None:
-        raise HTTPException(status_code=404, detail="Character not found")
+        raise HTTPException(status_code=404, detail="角色不存在")
 
     if not files:
-        raise HTTPException(status_code=400, detail="No files uploaded")
+        raise HTTPException(status_code=400, detail="未上传任何文件")
 
     series_root = get_series_path(normalized_series_slug)
     upload_dir = get_character_source_uploads_dir(normalized_series_slug, normalized_character_id)
@@ -146,3 +180,20 @@ async def upload_character_source_images_api(
         "item": manifest,
         "source_images": source_images,
     }
+
+
+@router.delete("/{character_id}/source-images")
+async def delete_character_source_image_api(
+    character_id: str,
+    series_slug: str = Query(min_length=1),
+    image_path: str = Query(min_length=1),
+):
+    try:
+        manifest = delete_character_source_image(
+            series_slug=series_slug.strip(),
+            character_id=character_id.strip(),
+            image_path=image_path.strip(),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="角色或参考图不存在") from exc
+    return {"item": manifest}

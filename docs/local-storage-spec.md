@@ -189,6 +189,12 @@ outputs/exports/
 trash/
 ```
 
+### 5.5 编辑与删除规则
+
+- 系列允许直接修改 `name` 和 `description`
+- 修改系列信息时，不会改动既有 `slug`，也不会重命名系列目录
+- 删除系列时，会直接删除 `output/{series_slug}/` 整个目录
+
 ## 6. 剧集存储
 
 ### 6.1 路径
@@ -235,6 +241,14 @@ episodes/{episode_id}/
 - `script.raw.txt`：原始剧本文本
 - `script.parsed.json`：结构化剧本
 - `script.versions/`：按版本保存历史剧本
+
+### 6.5 编辑与删除规则
+
+- 剧集允许直接修改 `episode.json.name`
+- 删除剧集前，后端会检查：
+  - 是否仍有场景的 `episode_id` 指向该剧集
+  - 是否仍有分镜板的 `episode_id` 指向该剧集
+- 只要存在引用，删除就会被拒绝
 
 ## 7. 角色存储
 
@@ -335,6 +349,23 @@ characters/{character_id}/
 - 三视图
 - 特征分解拼图
 
+### 7.7 编辑与删除规则
+
+- 角色允许直接修改：
+  - `character.json.name`
+  - `character.json.brief`
+- 修改 `brief` 时，会同步更新 `bible.json.brief`
+- 删除角色前，后端会遍历全部镜头，检查 `characters` 数组是否仍引用该角色
+- 只要仍被镜头引用，删除就会被拒绝
+
+### 7.8 角色参考图删除规则
+
+- 删除单张参考图时，会同步处理三处数据：
+  - 删除 `source_uploads/` 下对应原图文件
+  - 更新 `character.json.source_images`
+  - 更新 `bible.json.source_images`
+- 删除参考图不会删除角色本体，也不会主动删除已生成的角色圣经拼图
+
 ## 8. 场景存储
 
 ### 8.1 路径
@@ -421,6 +452,15 @@ scenes/{scene_id}/
 - 高角度空间关系
 - 局部细节或关键道具区域
 
+### 8.6 编辑与删除规则
+
+- 场景允许直接修改：
+  - `scene.json.name`
+  - `scene.json.description`
+  - `scene.json.episode_id`
+- 删除场景前，后端会遍历全部镜头，检查 `scene_id` 是否仍引用该场景
+- 只要仍被镜头引用，删除就会被拒绝
+
 ## 9. 分镜板与镜头存储
 
 ### 9.1 分镜板路径
@@ -468,6 +508,20 @@ storyboards/{storyboard_id}/
 - `dialogue`
 - `visual`
 - `prompt_package`
+
+### 9.5 编辑与删除规则
+
+- 分镜板当前支持删除，但不支持修改其 `id` 或切换所属剧集
+- 删除分镜板前，会检查是否仍被快照引用
+- 镜头当前支持修改以下核心字段：
+  - `scene_id`
+  - `characters`
+  - `visual.shot_size`
+  - `visual.camera_movement`
+  - `visual.duration_seconds`
+  - `visual.lighting`
+  - `visual.palette`
+- 删除镜头前，会检查是否仍被快照或任务引用
 - `status`
 
 其中：

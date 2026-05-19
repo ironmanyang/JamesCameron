@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import {
   analyzeEpisodeScript,
   assembleShotPackage,
@@ -12,6 +12,13 @@ import {
   createSnapshot,
   createStoryboard,
   createVideoJobFromSnapshot,
+  deleteCharacter,
+  deleteCharacterSourceImage,
+  deleteEpisode,
+  deleteScene,
+  deleteSeries,
+  deleteShot,
+  deleteStoryboard,
   generateCharacterAssets,
   generateSceneAssets,
   getCharacterBible,
@@ -31,12 +38,23 @@ import {
   saveParsedScript,
   saveRawScript,
   submitJob,
+  updateCharacter,
+  updateEpisode,
+  updateScene,
+  updateShot,
+  updateSeries,
   uploadCharacterSourceImages
 } from "./services/api";
 
 const health = ref("checking");
 const characterSourceFiles = ref([]);
 const characterSourceInput = ref(null);
+let episodeScriptsRequestSeed = 0;
+let productionRequestSeed = 0;
+let shotsRequestSeed = 0;
+let characterBibleRequestSeed = 0;
+let scenePackageRequestSeed = 0;
+let jobDetailRequestSeed = 0;
 
 const loading = reactive({
   boot: true,
@@ -49,14 +67,26 @@ const loading = reactive({
   saveRaw: false,
   saveParsed: false,
   createSeries: false,
+  updateSeries: false,
+  deleteSeries: false,
   createEpisode: false,
+  updateEpisode: false,
+  deleteEpisode: false,
   createCharacter: false,
+  updateCharacter: false,
+  deleteCharacter: false,
   createScene: false,
+  updateScene: false,
+  deleteScene: false,
   createStoryboard: false,
   createShot: false,
+  updateShot: false,
+  deleteShot: false,
+  deleteStoryboard: false,
   createRender: false,
   characterAssets: false,
   characterUpload: false,
+  deleteCharacterSourceImage: false,
   characterBible: false,
   sceneAssets: false,
   scenePackage: false,
@@ -80,6 +110,28 @@ const forms = reactive({
   shotDuration: 5,
   shotPalette: "",
   shotLighting: ""
+});
+
+const inlineEditing = reactive({
+  seriesSlug: "",
+  seriesName: "",
+  seriesDescription: "",
+  episodeId: "",
+  episodeName: "",
+  characterId: "",
+  characterName: "",
+  characterBrief: "",
+  sceneId: "",
+  sceneName: "",
+  sceneDescription: "",
+  shotId: "",
+  shotSceneId: "",
+  shotSize: "medium",
+  shotMovement: "static",
+  shotDuration: 5,
+  shotLighting: "",
+  shotPalette: "",
+  shotCharacterIds: []
 });
 
 const shotSizeOptions = [
@@ -261,6 +313,112 @@ function singlePreviewList(relativePath) {
   return url ? [url] : [];
 }
 
+async function confirmDanger(message, title = "确认操作") {
+  try {
+    await ElMessageBox.confirm(message, title, {
+      confirmButtonText: "确认",
+      cancelButtonText: "取消",
+      type: "warning"
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isEditingSeries(seriesSlug) {
+  return inlineEditing.seriesSlug === seriesSlug;
+}
+
+function isEditingEpisode(episodeId) {
+  return inlineEditing.episodeId === episodeId;
+}
+
+function isEditingCharacter(characterId) {
+  return inlineEditing.characterId === characterId;
+}
+
+function isEditingScene(sceneId) {
+  return inlineEditing.sceneId === sceneId;
+}
+
+function isEditingShot(shotId) {
+  return inlineEditing.shotId === shotId;
+}
+
+function startSeriesEdit(item) {
+  inlineEditing.seriesSlug = item.slug;
+  inlineEditing.seriesName = item.name || "";
+  inlineEditing.seriesDescription = item.description || "";
+  state.selectedSeriesSlug = item.slug;
+}
+
+function cancelSeriesEdit() {
+  inlineEditing.seriesSlug = "";
+  inlineEditing.seriesName = "";
+  inlineEditing.seriesDescription = "";
+}
+
+function startEpisodeEdit(item) {
+  inlineEditing.episodeId = item.id;
+  inlineEditing.episodeName = item.name || "";
+  state.selectedEpisodeId = item.id;
+}
+
+function cancelEpisodeEdit() {
+  inlineEditing.episodeId = "";
+  inlineEditing.episodeName = "";
+}
+
+function startCharacterEdit(item) {
+  inlineEditing.characterId = item.id;
+  inlineEditing.characterName = item.name || "";
+  inlineEditing.characterBrief = item.brief || "";
+  state.selectedCharacterId = item.id;
+}
+
+function cancelCharacterEdit() {
+  inlineEditing.characterId = "";
+  inlineEditing.characterName = "";
+  inlineEditing.characterBrief = "";
+}
+
+function startSceneEdit(item) {
+  inlineEditing.sceneId = item.id;
+  inlineEditing.sceneName = item.name || "";
+  inlineEditing.sceneDescription = item.description || "";
+  state.selectedSceneId = item.id;
+}
+
+function cancelSceneEdit() {
+  inlineEditing.sceneId = "";
+  inlineEditing.sceneName = "";
+  inlineEditing.sceneDescription = "";
+}
+
+function startShotEdit(item) {
+  inlineEditing.shotId = item.id;
+  inlineEditing.shotSceneId = item.scene_id || "";
+  inlineEditing.shotSize = item.visual?.shot_size || "medium";
+  inlineEditing.shotMovement = item.visual?.camera_movement || "static";
+  inlineEditing.shotDuration = item.visual?.duration_seconds || 5;
+  inlineEditing.shotLighting = item.visual?.lighting || "";
+  inlineEditing.shotPalette = item.visual?.palette || "";
+  inlineEditing.shotCharacterIds = [...(item.characters || [])];
+  state.selectedShotId = item.id;
+}
+
+function cancelShotEdit() {
+  inlineEditing.shotId = "";
+  inlineEditing.shotSceneId = "";
+  inlineEditing.shotSize = "medium";
+  inlineEditing.shotMovement = "static";
+  inlineEditing.shotDuration = 5;
+  inlineEditing.shotLighting = "";
+  inlineEditing.shotPalette = "";
+  inlineEditing.shotCharacterIds = [];
+}
+
 function syncAssetCounts() {
   state.assets = {
     characters: state.characters.length,
@@ -288,6 +446,19 @@ function formatShotSize(value) {
 
 function formatShotMovement(value) {
   return shotMovementOptions.find((item) => item.value === value)?.label || value || "未设置";
+}
+
+function formatSceneLabel(sceneId) {
+  const scene = state.scenes.find((item) => item.id === sceneId);
+  if (!scene) {
+    return sceneId || "未关联场景";
+  }
+  return `${scene.name} · ${scene.id}`;
+}
+
+function formatShotKeyword(value, fallback = "未设置") {
+  const normalized = String(value || "").trim();
+  return normalized || fallback;
 }
 
 function formatProviderName(value) {
@@ -354,6 +525,7 @@ async function loadEpisodes(seriesSlug) {
 }
 
 async function loadProductionData(seriesSlug) {
+  const requestId = ++productionRequestSeed;
   if (!seriesSlug) {
     state.characters = [];
     state.scenes = [];
@@ -380,6 +552,10 @@ async function loadProductionData(seriesSlug) {
       listStoryboards(seriesSlug),
       listJobs(seriesSlug)
     ]);
+
+    if (requestId !== productionRequestSeed || seriesSlug !== state.selectedSeriesSlug) {
+      return;
+    }
 
     state.characters = characters.items || [];
     state.scenes = scenes.items || [];
@@ -411,13 +587,19 @@ async function loadProductionData(seriesSlug) {
       state.selectedJob = null;
     }
   } catch (error) {
+    if (requestId !== productionRequestSeed || seriesSlug !== state.selectedSeriesSlug) {
+      return;
+    }
     setError(error);
   } finally {
-    loading.production = false;
+    if (requestId === productionRequestSeed) {
+      loading.production = false;
+    }
   }
 }
 
 async function loadShotsForStoryboard(seriesSlug, storyboardId) {
+  const requestId = ++shotsRequestSeed;
   if (!seriesSlug || !storyboardId) {
     state.shots = [];
     state.selectedShotId = "";
@@ -425,20 +607,39 @@ async function loadShotsForStoryboard(seriesSlug, storyboardId) {
   }
 
   loading.shots = true;
+  state.shots = [];
+  state.selectedShotId = "";
   try {
     const data = await listShots(seriesSlug, storyboardId);
+    if (
+      requestId !== shotsRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      storyboardId !== state.selectedStoryboardId
+    ) {
+      return;
+    }
     state.shots = data.items || [];
     if (!state.shots.some((item) => item.id === state.selectedShotId)) {
       state.selectedShotId = state.shots[0]?.id || "";
     }
   } catch (error) {
+    if (
+      requestId !== shotsRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      storyboardId !== state.selectedStoryboardId
+    ) {
+      return;
+    }
     setError(error);
   } finally {
-    loading.shots = false;
+    if (requestId === shotsRequestSeed) {
+      loading.shots = false;
+    }
   }
 }
 
 async function loadEpisodeScripts(seriesSlug, episodeId) {
+  const requestId = ++episodeScriptsRequestSeed;
   if (!seriesSlug || !episodeId) {
     state.rawScript = "";
     state.parsedScriptText = JSON.stringify(defaultParsedScript(""), null, 2);
@@ -446,11 +647,21 @@ async function loadEpisodeScripts(seriesSlug, episodeId) {
   }
 
   loading.scripts = true;
+  state.rawScript = "";
+  state.parsedScriptText = JSON.stringify(defaultParsedScript(selectedEpisode.value?.name || ""), null, 2);
   try {
     const [raw, parsed] = await Promise.all([
       getRawScript(seriesSlug, episodeId),
       getParsedScript(seriesSlug, episodeId)
     ]);
+
+    if (
+      requestId !== episodeScriptsRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      episodeId !== state.selectedEpisodeId
+    ) {
+      return;
+    }
 
     state.rawScript = raw.content || "";
     const parsedContent =
@@ -459,63 +670,126 @@ async function loadEpisodeScripts(seriesSlug, episodeId) {
         : defaultParsedScript(selectedEpisode.value?.name || "");
     state.parsedScriptText = JSON.stringify(parsedContent, null, 2);
   } catch (error) {
+    if (
+      requestId !== episodeScriptsRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      episodeId !== state.selectedEpisodeId
+    ) {
+      return;
+    }
     setError(error);
   } finally {
-    loading.scripts = false;
+    if (requestId === episodeScriptsRequestSeed) {
+      loading.scripts = false;
+    }
   }
 }
 
 async function loadCharacterBible(seriesSlug, characterId) {
+  const requestId = ++characterBibleRequestSeed;
   if (!seriesSlug || !characterId) {
     state.selectedCharacterBible = null;
     return;
   }
 
   loading.characterBible = true;
+  state.selectedCharacterBible = null;
   try {
     const response = await getCharacterBible(seriesSlug, characterId);
+    if (
+      requestId !== characterBibleRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      characterId !== state.selectedCharacterId
+    ) {
+      return;
+    }
     state.selectedCharacterBible = response.item || null;
   } catch (error) {
+    if (
+      requestId !== characterBibleRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      characterId !== state.selectedCharacterId
+    ) {
+      return;
+    }
     state.selectedCharacterBible = null;
     setError(error);
   } finally {
-    loading.characterBible = false;
+    if (requestId === characterBibleRequestSeed) {
+      loading.characterBible = false;
+    }
   }
 }
 
 async function loadScenePackage(seriesSlug, sceneId) {
+  const requestId = ++scenePackageRequestSeed;
   if (!seriesSlug || !sceneId) {
     state.selectedScenePackage = null;
     return;
   }
 
   loading.scenePackage = true;
+  state.selectedScenePackage = null;
   try {
     const response = await getScenePromptPackage(seriesSlug, sceneId);
+    if (
+      requestId !== scenePackageRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      sceneId !== state.selectedSceneId
+    ) {
+      return;
+    }
     state.selectedScenePackage = response.item || null;
   } catch (error) {
+    if (
+      requestId !== scenePackageRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      sceneId !== state.selectedSceneId
+    ) {
+      return;
+    }
     state.selectedScenePackage = null;
     setError(error);
   } finally {
-    loading.scenePackage = false;
+    if (requestId === scenePackageRequestSeed) {
+      loading.scenePackage = false;
+    }
   }
 }
 
 async function loadJobDetail(seriesSlug, jobId) {
+  const requestId = ++jobDetailRequestSeed;
   if (!seriesSlug || !jobId) {
     state.selectedJob = null;
     return;
   }
 
   loading.jobDetail = true;
+  state.selectedJob = null;
   try {
     const response = await getJob(seriesSlug, jobId);
+    if (
+      requestId !== jobDetailRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      jobId !== state.selectedJobId
+    ) {
+      return;
+    }
     state.selectedJob = response.item || null;
   } catch (error) {
+    if (
+      requestId !== jobDetailRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      jobId !== state.selectedJobId
+    ) {
+      return;
+    }
     state.selectedJob = null;
     setError(error);
   } finally {
-    loading.jobDetail = false;
+    if (requestId === jobDetailRequestSeed) {
+      loading.jobDetail = false;
+    }
   }
 }
 
@@ -549,6 +823,70 @@ async function handleCreateSeries() {
   }
 }
 
+async function handleUpdateSeries(item = selectedSeries.value) {
+  const targetSlug = item?.slug || state.selectedSeriesSlug;
+  const name = (isEditingSeries(targetSlug) ? inlineEditing.seriesName : forms.seriesName).trim();
+  const description = isEditingSeries(targetSlug) ? inlineEditing.seriesDescription.trim() : forms.seriesDescription.trim();
+
+  if (!targetSlug) {
+    setError("请先选择一个系列");
+    return;
+  }
+  if (!name) {
+    setError("请输入系列名称");
+    return;
+  }
+
+  loading.updateSeries = true;
+  try {
+    await updateSeries(targetSlug, {
+      name,
+      description
+    });
+    await loadSeries();
+    state.selectedSeriesSlug = targetSlug;
+    if (isEditingSeries(targetSlug)) {
+      cancelSeriesEdit();
+    }
+    setNotice("系列信息已更新");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.updateSeries = false;
+  }
+}
+
+async function handleDeleteSeries(item = selectedSeries.value) {
+  const targetSeries = item || selectedSeries.value;
+  const targetSlug = targetSeries?.slug || "";
+
+  if (!targetSlug || !targetSeries) {
+    setError("请先选择一个系列");
+    return;
+  }
+  const confirmed = await confirmDanger(`确定删除系列“${targetSeries.name}”吗？这会删除该系列下的全部本地数据。`, "删除系列");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteSeries = true;
+  try {
+    await deleteSeries(targetSlug);
+    if (state.selectedSeriesSlug === targetSlug) {
+      state.selectedSeriesSlug = "";
+    }
+    if (isEditingSeries(targetSlug)) {
+      cancelSeriesEdit();
+    }
+    await loadSeries();
+    setNotice("系列已删除");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteSeries = false;
+  }
+}
+
 async function handleCreateEpisode() {
   if (!state.selectedSeriesSlug) {
     setError("请先选择一个系列");
@@ -569,6 +907,68 @@ async function handleCreateEpisode() {
     setError(error);
   } finally {
     loading.createEpisode = false;
+  }
+}
+
+async function handleUpdateEpisode(item = selectedEpisode.value) {
+  const targetEpisodeId = item?.id || state.selectedEpisodeId;
+  const name = (isEditingEpisode(targetEpisodeId) ? inlineEditing.episodeName : forms.episodeName).trim();
+
+  if (!state.selectedSeriesSlug || !targetEpisodeId) {
+    setError("请先选择一个剧集");
+    return;
+  }
+  if (!name) {
+    setError("请输入剧集名称");
+    return;
+  }
+
+  loading.updateEpisode = true;
+  try {
+    await updateEpisode(state.selectedSeriesSlug, targetEpisodeId, {
+      name
+    });
+    await loadEpisodes(state.selectedSeriesSlug);
+    state.selectedEpisodeId = targetEpisodeId;
+    if (isEditingEpisode(targetEpisodeId)) {
+      cancelEpisodeEdit();
+    }
+    setNotice("剧集信息已更新");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.updateEpisode = false;
+  }
+}
+
+async function handleDeleteEpisode(item = selectedEpisode.value) {
+  const targetEpisode = item || selectedEpisode.value;
+  const targetEpisodeId = targetEpisode?.id || "";
+
+  if (!state.selectedSeriesSlug || !targetEpisodeId || !targetEpisode) {
+    setError("请先选择一个剧集");
+    return;
+  }
+  const confirmed = await confirmDanger(`确定删除剧集“${targetEpisode.name}”吗？`, "删除剧集");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteEpisode = true;
+  try {
+    await deleteEpisode(state.selectedSeriesSlug, targetEpisodeId);
+    if (state.selectedEpisodeId === targetEpisodeId) {
+      state.selectedEpisodeId = "";
+    }
+    if (isEditingEpisode(targetEpisodeId)) {
+      cancelEpisodeEdit();
+    }
+    await loadEpisodes(state.selectedSeriesSlug);
+    setNotice("剧集已删除");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteEpisode = false;
   }
 }
 
@@ -654,6 +1054,70 @@ async function handleCreateCharacter() {
   }
 }
 
+async function handleUpdateCharacter(item = selectedCharacter.value) {
+  const targetCharacterId = item?.id || state.selectedCharacterId;
+  const name = (isEditingCharacter(targetCharacterId) ? inlineEditing.characterName : forms.characterName).trim();
+  const brief = isEditingCharacter(targetCharacterId) ? inlineEditing.characterBrief.trim() : forms.characterBrief.trim();
+
+  if (!state.selectedSeriesSlug || !targetCharacterId) {
+    setError("请先选择一个角色");
+    return;
+  }
+  if (!name) {
+    setError("请输入角色名称");
+    return;
+  }
+
+  loading.updateCharacter = true;
+  try {
+    await updateCharacter(state.selectedSeriesSlug, targetCharacterId, {
+      name,
+      brief
+    });
+    await loadProductionData(state.selectedSeriesSlug);
+    state.selectedCharacterId = targetCharacterId;
+    if (isEditingCharacter(targetCharacterId)) {
+      cancelCharacterEdit();
+    }
+    setNotice("角色信息已更新");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.updateCharacter = false;
+  }
+}
+
+async function handleDeleteCharacter(item = selectedCharacter.value) {
+  const targetCharacter = item || selectedCharacter.value;
+  const targetCharacterId = targetCharacter?.id || "";
+
+  if (!state.selectedSeriesSlug || !targetCharacterId || !targetCharacter) {
+    setError("请先选择一个角色");
+    return;
+  }
+  const confirmed = await confirmDanger(`确定删除角色“${targetCharacter.name}”吗？`, "删除角色");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteCharacter = true;
+  try {
+    await deleteCharacter(state.selectedSeriesSlug, targetCharacterId);
+    if (state.selectedCharacterId === targetCharacterId) {
+      state.selectedCharacterId = "";
+    }
+    if (isEditingCharacter(targetCharacterId)) {
+      cancelCharacterEdit();
+    }
+    await loadProductionData(state.selectedSeriesSlug);
+    setNotice("角色已删除");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteCharacter = false;
+  }
+}
+
 function handleCharacterSourceFileChange(event) {
   const files = event?.target?.files;
   characterSourceFiles.value = files ? Array.from(files) : [];
@@ -687,6 +1151,29 @@ async function handleUploadCharacterSourceImages() {
     setError(error);
   } finally {
     loading.characterUpload = false;
+  }
+}
+
+async function handleDeleteCharacterSourceImage(imagePath) {
+  if (!state.selectedSeriesSlug || !state.selectedCharacterId || !imagePath) {
+    setError("请先选择角色参考图");
+    return;
+  }
+  const confirmed = await confirmDanger("确定删除这张角色参考图吗？", "删除参考图");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteCharacterSourceImage = true;
+  try {
+    await deleteCharacterSourceImage(state.selectedSeriesSlug, state.selectedCharacterId, imagePath);
+    await loadProductionData(state.selectedSeriesSlug);
+    await loadCharacterBible(state.selectedSeriesSlug, state.selectedCharacterId);
+    setNotice("角色参考图已删除");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteCharacterSourceImage = false;
   }
 }
 
@@ -752,6 +1239,72 @@ async function handleCreateScene() {
   }
 }
 
+async function handleUpdateScene(item = selectedScene.value) {
+  const targetSceneId = item?.id || state.selectedSceneId;
+  const name = (isEditingScene(targetSceneId) ? inlineEditing.sceneName : forms.sceneName).trim();
+  const description = isEditingScene(targetSceneId) ? inlineEditing.sceneDescription.trim() : forms.sceneDescription.trim();
+  const episodeId = item?.episode_id ?? selectedScene.value?.episode_id ?? state.selectedEpisodeId ?? "";
+
+  if (!state.selectedSeriesSlug || !targetSceneId) {
+    setError("请先选择一个场景");
+    return;
+  }
+  if (!name) {
+    setError("请输入场景名称");
+    return;
+  }
+
+  loading.updateScene = true;
+  try {
+    await updateScene(state.selectedSeriesSlug, targetSceneId, {
+      name,
+      description,
+      episode_id: episodeId
+    });
+    await loadProductionData(state.selectedSeriesSlug);
+    state.selectedSceneId = targetSceneId;
+    if (isEditingScene(targetSceneId)) {
+      cancelSceneEdit();
+    }
+    setNotice("场景信息已更新");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.updateScene = false;
+  }
+}
+
+async function handleDeleteScene(item = selectedScene.value) {
+  const targetScene = item || selectedScene.value;
+  const targetSceneId = targetScene?.id || "";
+
+  if (!state.selectedSeriesSlug || !targetSceneId || !targetScene) {
+    setError("请先选择一个场景");
+    return;
+  }
+  const confirmed = await confirmDanger(`确定删除场景“${targetScene.name}”吗？`, "删除场景");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteScene = true;
+  try {
+    await deleteScene(state.selectedSeriesSlug, targetSceneId);
+    if (state.selectedSceneId === targetSceneId) {
+      state.selectedSceneId = "";
+    }
+    if (isEditingScene(targetSceneId)) {
+      cancelSceneEdit();
+    }
+    await loadProductionData(state.selectedSeriesSlug);
+    setNotice("场景已删除");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteScene = false;
+  }
+}
+
 async function handleGenerateSceneAssets() {
   if (!state.selectedSeriesSlug || !state.selectedSceneId) {
     setError("请先选择一个场景");
@@ -797,6 +1350,36 @@ async function handleCreateStoryboard() {
   }
 }
 
+async function handleDeleteStoryboard(item = selectedStoryboard.value) {
+  const targetStoryboard = item || selectedStoryboard.value;
+  const targetStoryboardId = targetStoryboard?.id || "";
+
+  if (!state.selectedSeriesSlug || !targetStoryboardId || !targetStoryboard) {
+    setError("请先选择一个分镜板");
+    return;
+  }
+  const confirmed = await confirmDanger(`确定删除分镜板“${targetStoryboardId}”吗？`, "删除分镜板");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteStoryboard = true;
+  try {
+    await deleteStoryboard(state.selectedSeriesSlug, targetStoryboardId);
+    if (state.selectedStoryboardId === targetStoryboardId) {
+      state.selectedStoryboardId = "";
+      state.selectedShotId = "";
+      cancelShotEdit();
+    }
+    await loadProductionData(state.selectedSeriesSlug);
+    setNotice("分镜板已删除");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteStoryboard = false;
+  }
+}
+
 async function handleCreateShot() {
   if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
     setError("请先创建或选择一个分镜板");
@@ -828,6 +1411,7 @@ async function handleCreateShot() {
         }
       }
     });
+    await loadProductionData(state.selectedSeriesSlug);
     await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
     state.selectedShotId = response.item.id;
     setNotice(`已创建镜头：${response.item.id}`);
@@ -835,6 +1419,74 @@ async function handleCreateShot() {
     setError(error);
   } finally {
     loading.createShot = false;
+  }
+}
+
+async function handleUpdateShot(item = selectedShot.value) {
+  const targetShot = item || selectedShot.value;
+  const targetShotId = targetShot?.id || "";
+
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !targetShotId) {
+    setError("请先选择一个镜头");
+    return;
+  }
+  if (!inlineEditing.shotSceneId) {
+    setError("请先选择关联场景");
+    return;
+  }
+
+  loading.updateShot = true;
+  try {
+    await updateShot(state.selectedSeriesSlug, state.selectedStoryboardId, targetShotId, {
+      scene_id: inlineEditing.shotSceneId,
+      characters: [...inlineEditing.shotCharacterIds],
+      visual: {
+        ...(targetShot.visual || {}),
+        shot_size: inlineEditing.shotSize,
+        camera_movement: inlineEditing.shotMovement,
+        duration_seconds: Number(inlineEditing.shotDuration) || 5,
+        lighting: inlineEditing.shotLighting.trim(),
+        palette: inlineEditing.shotPalette.trim()
+      }
+    });
+    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    state.selectedShotId = targetShotId;
+    cancelShotEdit();
+    setNotice("镜头已更新");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.updateShot = false;
+  }
+}
+
+async function handleDeleteShot(item = selectedShot.value) {
+  const targetShot = item || selectedShot.value;
+  const targetShotId = targetShot?.id || "";
+
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !targetShotId) {
+    setError("请先选择一个镜头");
+    return;
+  }
+  const confirmed = await confirmDanger(`确定删除镜头“${targetShotId}”吗？`, "删除镜头");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteShot = true;
+  try {
+    await deleteShot(state.selectedSeriesSlug, state.selectedStoryboardId, targetShotId);
+    if (state.selectedShotId === targetShotId) {
+      state.selectedShotId = "";
+      cancelShotEdit();
+    }
+    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    await loadProductionData(state.selectedSeriesSlug);
+    setNotice("镜头已删除");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteShot = false;
   }
 }
 
@@ -940,7 +1592,31 @@ async function handleAssembleShotPackage() {
 
 watch(
   () => state.selectedSeriesSlug,
-  async (seriesSlug) => {
+  async (seriesSlug, previousSeriesSlug) => {
+    if (seriesSlug !== previousSeriesSlug) {
+      state.selectedEpisodeId = "";
+      state.selectedStoryboardId = "";
+      state.selectedShotId = "";
+      state.selectedCharacterId = "";
+      state.selectedSceneId = "";
+      state.selectedJobId = "";
+      state.characters = [];
+      state.scenes = [];
+      state.storyboards = [];
+      state.shots = [];
+      state.jobs = [];
+      state.selectedCharacterIds = [];
+      state.selectedCharacterBible = null;
+      state.selectedScenePackage = null;
+      state.selectedJob = null;
+      forms.shotSceneId = "";
+      state.rawScript = "";
+      state.parsedScriptText = JSON.stringify(defaultParsedScript(""), null, 2);
+      cancelEpisodeEdit();
+      cancelCharacterEdit();
+      cancelSceneEdit();
+      cancelShotEdit();
+    }
     await loadEpisodes(seriesSlug);
     await loadProductionData(seriesSlug);
   }
@@ -959,6 +1635,7 @@ watch(
 watch(
   () => state.selectedStoryboardId,
   async (storyboardId) => {
+    cancelShotEdit();
     await loadShotsForStoryboard(state.selectedSeriesSlug, storyboardId);
   }
 );
@@ -1010,7 +1687,7 @@ onMounted(boot);
         </p>
       </div>
 
-      <div class="status-panel">
+      <div class="status-panel ">
         <div class="status-chip">
           <span class="status-dot" :class="health"></span>
           <strong>后端服务</strong>
@@ -1024,26 +1701,7 @@ onMounted(boot);
 
     <section class="workspace">
       <aside class="column column-left">
-        <section class="panel panel-accent">
-          <div class="panel-header">
-            <div>
-              <p class="panel-kicker">系列</p>
-              <h2>系列库</h2>
-            </div>
-            <span class="pill">{{ state.series.length }}</span>
-          </div>
-
-          <div class="form-stack">
-            <el-input v-model="forms.seriesName" class="field" type="text" placeholder="输入系列名称" />
-            <el-input v-model="forms.seriesDescription" class="field-textarea compact" type="textarea" resize="vertical"
-              placeholder="输入系列简介" />
-            <button class="action-button warm" :disabled="loading.createSeries" @click="handleCreateSeries">
-              {{ loading.createSeries ? "创建中..." : "新建系列" }}
-            </button>
-          </div>
-        </section>
-
-        <section class="panel">
+        <section class="panel ">
           <div class="panel-header">
             <div>
               <p class="panel-kicker">工作区</p>
@@ -1052,18 +1710,67 @@ onMounted(boot);
           </div>
 
           <div class="list-stack">
-            <button v-for="item in state.series" :key="item.slug" class="list-card"
-              :class="{ active: item.slug === state.selectedSeriesSlug }" @click="state.selectedSeriesSlug = item.slug">
-              <strong>{{ item.name }}</strong>
-              <span>{{ item.slug }}</span>
-              <small>{{ item.description || "暂无简介" }}</small>
-            </button>
+            <div v-for="item in state.series" :key="item.slug" class="list-card"
+              :class="{ active: item.slug === state.selectedSeriesSlug }">
+              <div class="item-body" @click="state.selectedSeriesSlug = item.slug">
+                <template v-if="isEditingSeries(item.slug)">
+                  <div class="item-editor">
+                    <el-input v-model="inlineEditing.seriesName" class="field" type="text" placeholder="输入系列名称" />
+                    <el-input v-model="inlineEditing.seriesDescription" class="field-textarea compact" type="textarea"
+                      resize="vertical" placeholder="输入系列简介" />
+                  </div>
+                </template>
+                <template v-else>
+                  <strong>{{ item.name }}</strong>
+                  <span>{{ item.slug }}</span>
+                  <small>{{ item.description || "暂无简介" }}</small>
+                </template>
+              </div>
+              <div class="item-actions">
+                <button v-if="isEditingSeries(item.slug)" class="action-button dark compact-button"
+                  :disabled="loading.updateSeries" @click.stop="handleUpdateSeries(item)">
+                  {{ loading.updateSeries ? "保存中..." : "保存" }}
+                </button>
+                <button v-else class="action-button ghost compact-button" @click.stop="startSeriesEdit(item)">
+                  编辑
+                </button>
+                <button v-if="isEditingSeries(item.slug)" class="action-button ghost compact-button"
+                  @click.stop="cancelSeriesEdit">
+                  取消
+                </button>
+                <button class="action-button ghost danger compact-button" :disabled="loading.deleteSeries"
+                  @click.stop="handleDeleteSeries(item)">
+                  {{ loading.deleteSeries ? "删除中..." : "删除" }}
+                </button>
+              </div>
+            </div>
 
             <div v-if="!state.series.length && !loading.series" class="empty-state">
               还没有系列，先创建一个吧。
             </div>
           </div>
         </section>
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">系列</p>
+              <h2>系列库</h2>
+            </div>
+            <span class="pill">共：{{ state.series.length }}</span>
+          </div>
+
+          <div class="form-stack">
+            <el-input v-model="forms.seriesName" class="field" type="text" placeholder="输入系列名称" />
+            <el-input v-model="forms.seriesDescription" class="field-textarea compact" type="textarea" resize="vertical"
+              placeholder="输入系列简介" />
+            <div class="inline-actions">
+              <button class="action-button warm" :disabled="loading.createSeries" @click="handleCreateSeries">
+                {{ loading.createSeries ? "创建中..." : "新建系列" }}
+              </button>
+            </div>
+          </div>
+        </section>
+
       </aside>
 
       <section class="column column-main">
@@ -1112,11 +1819,36 @@ onMounted(boot);
           </div>
 
           <div class="episode-strip">
-            <button v-for="item in state.episodes" :key="item.id" class="episode-chip"
-              :class="{ active: item.id === state.selectedEpisodeId }" @click="state.selectedEpisodeId = item.id">
-              <strong>{{ item.name }}</strong>
-              <span>{{ item.id }}</span>
-            </button>
+            <div v-for="item in state.episodes" :key="item.id" class="episode-chip"
+              :class="{ active: item.id === state.selectedEpisodeId }">
+              <div class="item-body" style="flex: 1;" @click="state.selectedEpisodeId = item.id">
+                <template v-if="isEditingEpisode(item.id)">
+                  <el-input v-model="inlineEditing.episodeName" class="field item-inline-field" type="text"
+                    placeholder="输入剧集名称" />
+                </template>
+                <template v-else>
+                  <strong>{{ item.name }}</strong>
+                  <span>{{ item.id }}</span>
+                </template>
+              </div>
+              <div class="item-actions">
+                <button v-if="isEditingEpisode(item.id)" class="action-button dark compact-button"
+                  :disabled="loading.updateEpisode" @click.stop="handleUpdateEpisode(item)">
+                  {{ loading.updateEpisode ? "保存中..." : "保存" }}
+                </button>
+                <button v-else class="action-button ghost compact-button" @click.stop="startEpisodeEdit(item)">
+                  编辑
+                </button>
+                <button v-if="isEditingEpisode(item.id)" class="action-button ghost compact-button"
+                  @click.stop="cancelEpisodeEdit">
+                  取消
+                </button>
+                <button class="action-button ghost danger compact-button" :disabled="loading.deleteEpisode"
+                  @click.stop="handleDeleteEpisode(item)">
+                  {{ loading.deleteEpisode ? "删除中..." : "删除" }}
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -1137,7 +1869,7 @@ onMounted(boot);
               </div>
             </div>
             <el-input v-model="state.rawScript" class="field-textarea editor-textarea" type="textarea"
-              :autosize="{ minRows: 22 }" resize="none" placeholder="在这里粘贴或编写原始剧本内容。" />
+              :autosize="{ minRows: 22, maxRows: 30 }" resize="auto" placeholder="在这里粘贴或编写原始剧本内容。" />
           </article>
 
           <article class="panel editor-panel">
@@ -1151,7 +1883,7 @@ onMounted(boot);
               </button>
             </div>
             <el-input v-model="state.parsedScriptText" class="field-textarea editor-textarea code-textarea"
-              type="textarea" :autosize="{ minRows: 22 }" resize="none" placeholder="" />
+              type="textarea" :autosize="{ minRows: 22, maxRows: 30 }" resize="auto" placeholder="" />
           </article>
         </section>
 
@@ -1171,18 +1903,49 @@ onMounted(boot);
               <p class="inline-note">
                 支持两种入口：先用文字描述创建角色；如果是固定角色，也可以在创建后上传官图或参考图，再进行生成。
               </p>
-              <button class="action-button warm" :disabled="loading.createCharacter" @click="handleCreateCharacter">
-                {{ loading.createCharacter ? "创建中..." : "新建角色" }}
-              </button>
+              <div class="inline-actions" style="margin-bottom: 12px;">
+                <button class="action-button warm" :disabled="loading.createCharacter" @click="handleCreateCharacter">
+                  {{ loading.createCharacter ? "创建中..." : "新建角色" }}
+                </button>
+              </div>
             </div>
 
             <div class="mini-list">
-              <button v-for="item in state.characters" :key="item.id" class="mini-card selectable"
-                :class="{ active: item.id === state.selectedCharacterId }" @click="state.selectedCharacterId = item.id">
-                <strong>{{ item.name }}</strong>
-                <span>{{ item.id }}</span>
-                <small>{{ formatStatus(item.status) }}</small>
-              </button>
+              <div v-for="item in state.characters" :key="item.id" class="mini-card selectable"
+                :class="{ active: item.id === state.selectedCharacterId }">
+                <div class="item-body" @click="state.selectedCharacterId = item.id">
+                  <template v-if="isEditingCharacter(item.id)">
+                    <div class="item-editor">
+                      <el-input v-model="inlineEditing.characterName" class="field" type="text" placeholder="输入角色名称" />
+                      <el-input v-model="inlineEditing.characterBrief" class="field-textarea compact" type="textarea"
+                        :autosize="{ minRows: 5, maxRows: 15 }" resize="vertical" placeholder="输入角色简介、身份、性格等描述" />
+                    </div>
+                  </template>
+                  <template v-else>
+                    <strong>{{ item.name }}</strong>
+                    <span>{{ item.id }}</span>
+                    <small>{{ formatStatus(item.status) }}</small>
+                    <small>{{ item.brief || "暂无角色简介" }}</small>
+                  </template>
+                </div>
+                <div class="item-actions">
+                  <button v-if="isEditingCharacter(item.id)" class="action-button dark compact-button"
+                    :disabled="loading.updateCharacter" @click.stop="handleUpdateCharacter(item)">
+                    {{ loading.updateCharacter ? "保存中..." : "保存" }}
+                  </button>
+                  <button v-else class="action-button ghost compact-button" @click.stop="startCharacterEdit(item)">
+                    编辑
+                  </button>
+                  <button v-if="isEditingCharacter(item.id)" class="action-button ghost compact-button"
+                    @click.stop="cancelCharacterEdit">
+                    取消
+                  </button>
+                  <button class="action-button ghost danger compact-button" :disabled="loading.deleteCharacter"
+                    @click.stop="handleDeleteCharacter(item)">
+                    {{ loading.deleteCharacter ? "删除中..." : "删除" }}
+                  </button>
+                </div>
+              </div>
             </div>
           </article>
 
@@ -1198,18 +1961,49 @@ onMounted(boot);
               <el-input v-model="forms.sceneName" class="field" type="text" placeholder="输入场景名称" />
               <el-input v-model="forms.sceneDescription" class="field-textarea compact" type="textarea"
                 resize="vertical" placeholder="输入场景环境、氛围、时代、空间信息" />
-              <button class="action-button warm" :disabled="loading.createScene" @click="handleCreateScene">
-                {{ loading.createScene ? "创建中..." : "新建场景" }}
-              </button>
+              <div class="inline-actions" style="margin-bottom: 12px;">
+                <button class="action-button warm" :disabled="loading.createScene" @click="handleCreateScene">
+                  {{ loading.createScene ? "创建中..." : "新建场景" }}
+                </button>
+              </div>
             </div>
 
             <div class="mini-list">
-              <button v-for="item in state.scenes" :key="item.id" class="mini-card selectable"
-                :class="{ active: item.id === state.selectedSceneId }" @click="state.selectedSceneId = item.id">
-                <strong>{{ item.name }}</strong>
-                <span>{{ item.id }}</span>
-                <small>{{ formatStatus(item.status) }}</small>
-              </button>
+              <div v-for="item in state.scenes" :key="item.id" class="mini-card selectable"
+                :class="{ active: item.id === state.selectedSceneId }">
+                <div class="item-body" @click="state.selectedSceneId = item.id">
+                  <template v-if="isEditingScene(item.id)">
+                    <div class="item-editor">
+                      <el-input v-model="inlineEditing.sceneName" class="field" type="text" placeholder="输入场景名称" />
+                      <el-input v-model="inlineEditing.sceneDescription" class="field-textarea compact" type="textarea"
+                        resize="vertical" placeholder="输入场景环境、氛围、时代、空间信息" />
+                    </div>
+                  </template>
+                  <template v-else>
+                    <strong>{{ item.name }}</strong>
+                    <span>{{ item.id }}</span>
+                    <small>{{ formatStatus(item.status) }}</small>
+                    <small>{{ item.description || "暂无场景描述" }}</small>
+                  </template>
+                </div>
+                <div class="item-actions">
+                  <button v-if="isEditingScene(item.id)" class="action-button dark compact-button"
+                    :disabled="loading.updateScene" @click.stop="handleUpdateScene(item)">
+                    {{ loading.updateScene ? "保存中..." : "保存" }}
+                  </button>
+                  <button v-else class="action-button ghost compact-button" @click.stop="startSceneEdit(item)">
+                    编辑
+                  </button>
+                  <button v-if="isEditingScene(item.id)" class="action-button ghost compact-button"
+                    @click.stop="cancelSceneEdit">
+                    取消
+                  </button>
+                  <button class="action-button ghost danger compact-button" :disabled="loading.deleteScene"
+                    @click.stop="handleDeleteScene(item)">
+                    {{ loading.deleteScene ? "删除中..." : "删除" }}
+                  </button>
+                </div>
+              </div>
             </div>
           </article>
         </section>
@@ -1245,7 +2039,7 @@ onMounted(boot);
                 <div>
                   <strong>上传角色参考图</strong>
                   <p class="upload-copy">
-                    适用于 Tom、Jerry 这类固定角色。上传后，角色生成会优先参考你提供的图片，而不是只靠文字描述。
+                    适用于固定角色。上传后，角色生成会优先参考你提供的图片，而不是只靠文字描述。
                   </p>
                   <p class="upload-copy">
                     你可以选择两种生成方式：`参考图+文字生成` 会结合当前角色描述；`仅按参考图生成拼图` 会把上传图作为唯一主体来源，只生成三视图和特征分解拼图。
@@ -1265,6 +2059,11 @@ onMounted(boot);
                     <strong>上传参考</strong>
                     <small>{{ image.label }}</small>
                   </div>
+                  <button class="action-button ghost danger compact-button"
+                    :disabled="loading.deleteCharacterSourceImage"
+                    @click="handleDeleteCharacterSourceImage(image.path)">
+                    {{ loading.deleteCharacterSourceImage ? "删除中..." : "删除参考图" }}
+                  </button>
                   <el-image class="preview-image" :src="assetUrl(image.path)"
                     :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
                     preview-teleported />
@@ -1280,7 +2079,7 @@ onMounted(boot);
 
               <div class="reference-grid">
                 <div v-for="image in selectedCharacterImageEntries" :key="image.key"
-                  class="reference-card reference-card-large">
+                  class="reference-card reference-card-large" style="grid-column: span 2;">
                   <div class="reference-header">
                     <strong>{{ image.label }}</strong>
                     <small>{{ image.path || "尚未生成" }}</small>
@@ -1373,12 +2172,20 @@ onMounted(boot);
           </div>
 
           <div class="mini-list">
-            <button v-for="item in filteredStoryboards" :key="item.id" class="mini-card selectable"
-              :class="{ active: item.id === state.selectedStoryboardId }" @click="state.selectedStoryboardId = item.id">
-              <strong>{{ item.id }}</strong>
-              <span>{{ item.episode_id }}</span>
-              <small>{{ item.shot_ids.length }} 个镜头</small>
-            </button>
+            <div v-for="item in filteredStoryboards" :key="item.id" class="mini-card selectable" style="display: flex;"
+              :class="{ active: item.id === state.selectedStoryboardId }">
+              <div class="item-body" @click="state.selectedStoryboardId = item.id">
+                <strong>{{ item.id }}</strong>
+                <span>{{ item.episode_id }}</span>
+                <small>{{ item.shot_ids.length }} 个镜头</small>
+              </div>
+              <div class="item-actions">
+                <button class="action-button ghost danger compact-button" :disabled="loading.deleteStoryboard"
+                  @click.stop="handleDeleteStoryboard(item)">
+                  {{ loading.deleteStoryboard ? "删除中..." : "删除" }}
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="subsection">
@@ -1407,7 +2214,11 @@ onMounted(boot);
               </div>
 
               <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="30" :step="1"
-                controls-position="right" />
+                placeholder="输入镜头时长">
+                <template #suffix>
+                  <span>镜头时长</span>
+                </template>
+              </el-input-number>
 
               <el-checkbox-group v-model="state.selectedCharacterIds" class="check-grid">
                 <el-checkbox v-for="item in state.characters" :key="item.id" :value="item.id" class="check-card">
@@ -1422,13 +2233,67 @@ onMounted(boot);
           </div>
 
           <div class="mini-list">
-            <button v-for="item in state.shots" :key="item.id" class="mini-card selectable"
-              :class="{ active: item.id === state.selectedShotId }" @click="state.selectedShotId = item.id">
-              <strong>{{ item.id }}</strong>
-              <span>{{ formatShotSize(item.visual.shot_size) }} ·
-                {{ formatShotMovement(item.visual.camera_movement) }}</span>
-              <small>{{ item.scene_id }}</small>
-            </button>
+            <div v-for="item in state.shots" :key="item.id" class="mini-card selectable"
+              :class="{ active: item.id === state.selectedShotId }">
+              <div class="item-body" @click="state.selectedShotId = item.id">
+                <template v-if="isEditingShot(item.id)">
+                  <div class="item-editor">
+                    <el-select v-model="inlineEditing.shotSceneId" class="field-select" placeholder="选择关联场景">
+                      <el-option v-for="scene in state.scenes" :key="scene.id" :label="`${scene.name} · ${scene.id}`"
+                        :value="scene.id" />
+                    </el-select>
+                    <div class="split-grid">
+                      <el-select v-model="inlineEditing.shotSize" class="field-select" placeholder="镜头景别">
+                        <el-option v-for="option in shotSizeOptions" :key="option.value" :label="option.label"
+                          :value="option.value" />
+                      </el-select>
+                      <el-select v-model="inlineEditing.shotMovement" class="field-select" placeholder="运镜方式">
+                        <el-option v-for="option in shotMovementOptions" :key="option.value" :label="option.label"
+                          :value="option.value" />
+                      </el-select>
+                    </div>
+                    <div class="split-grid">
+                      <el-input v-model="inlineEditing.shotLighting" class="field" type="text" placeholder="输入光线关键词" />
+                      <el-input v-model="inlineEditing.shotPalette" class="field" type="text" placeholder="输入色调关键词" />
+                    </div>
+                    <el-input-number v-model="inlineEditing.shotDuration" class="field-number" :min="1" :max="30"
+                      :step="1" />
+                    <el-checkbox-group v-model="inlineEditing.shotCharacterIds" class="check-grid">
+                      <el-checkbox v-for="character in state.characters" :key="character.id" :value="character.id"
+                        class="check-card">
+                        {{ character.name }}
+                      </el-checkbox>
+                    </el-checkbox-group>
+                  </div>
+                </template>
+                <template v-else>
+                  <strong>{{ item.id }}</strong>
+                  <span>{{ formatShotSize(item.visual.shot_size) }} ·
+                    {{ formatShotMovement(item.visual.camera_movement) }}</span>
+                  <small>场景：{{ formatSceneLabel(item.scene_id) }}</small>
+                  <small>光线：{{ formatShotKeyword(item.visual.lighting) }}</small>
+                  <small>色调：{{ formatShotKeyword(item.visual.palette) }}</small>
+                  <small>{{ item.visual.duration_seconds }} 秒 · {{ (item.characters || []).length }} 个角色</small>
+                </template>
+              </div>
+              <div class="item-actions">
+                <button v-if="isEditingShot(item.id)" class="action-button dark compact-button"
+                  :disabled="loading.updateShot" @click.stop="handleUpdateShot(item)">
+                  {{ loading.updateShot ? "保存中..." : "保存" }}
+                </button>
+                <button v-else class="action-button ghost compact-button" @click.stop="startShotEdit(item)">
+                  编辑
+                </button>
+                <button v-if="isEditingShot(item.id)" class="action-button ghost compact-button"
+                  @click.stop="cancelShotEdit">
+                  取消
+                </button>
+                <button class="action-button ghost danger compact-button" :disabled="loading.deleteShot"
+                  @click.stop="handleDeleteShot(item)">
+                  {{ loading.deleteShot ? "删除中..." : "删除" }}
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -1563,7 +2428,7 @@ onMounted(boot);
             <div class="form-stack">
               <label class="code-label">提交请求体</label>
               <el-input :model-value="selectedJobRequestText" class="field-textarea code-textarea job-code"
-                type="textarea" resize="vertical" readonly />
+                type="textarea" resize="vertical" :autosize="{ minRows: 8, maxRows: 16 }" readonly />
             </div>
 
             <div
@@ -1571,7 +2436,7 @@ onMounted(boot);
               class="form-stack">
               <label class="code-label">远端返回</label>
               <el-input :model-value="selectedJobResponseText" class="field-textarea code-textarea job-code"
-                type="textarea" resize="vertical" readonly />
+                type="textarea" resize="vertical" :autosize="{ minRows: 8, maxRows: 16 }" readonly />
             </div>
           </div>
         </section>
@@ -1684,7 +2549,7 @@ onMounted(boot);
 
 .masthead {
   display: grid;
-  grid-template-columns: 1.5fr minmax(280px, 360px);
+  grid-template-columns: 1.5fr minmax(320px, 380px);
   gap: 18px;
   margin-bottom: 18px;
 }
@@ -1995,9 +2860,20 @@ h3 {
   border: 1px solid rgba(52, 211, 153, 0.28);
 }
 
+.action-button.danger {
+  color: #ffe4e6;
+  background: linear-gradient(135deg, rgba(190, 24, 93, 0.22), rgba(244, 63, 94, 0.24));
+  border: 1px solid rgba(251, 113, 133, 0.3);
+}
+
 .action-button.full-width {
   width: 100%;
   margin-bottom: 14px;
+}
+
+.compact-button {
+  padding: 10px 12px;
+  font-size: 12px;
 }
 
 .list-card,
@@ -2008,7 +2884,7 @@ h3 {
   background: rgba(255, 255, 255, 0.04);
   color: inherit;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .list-card,
@@ -2033,6 +2909,33 @@ h3 {
 .episode-chip.active {
   border-color: rgba(255, 189, 115, 0.56);
   background: linear-gradient(140deg, rgba(255, 189, 115, 0.18), rgba(255, 255, 255, 0.05));
+}
+
+.item-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  cursor: pointer;
+  flex: 1;
+}
+
+.item-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.item-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.item-inline-field {
+  min-width: 180px;
 }
 
 .list-card span,
@@ -2064,7 +2967,7 @@ h3 {
 }
 
 .summary-card {
-  padding: 16px;
+  padding: 8px 16px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -2112,10 +3015,11 @@ h3 {
 }
 
 .episode-chip {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  gap: 20px;
   padding: 12px 14px;
   border-radius: 16px;
+  min-width: 220px;
 }
 
 .subsection {
@@ -2310,7 +3214,15 @@ h3 {
     flex-direction: column;
   }
 
+  .item-actions {
+    width: 100%;
+  }
+
   .inline-field {
+    min-width: 0;
+  }
+
+  .item-inline-field {
     min-width: 0;
   }
 }

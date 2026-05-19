@@ -29,7 +29,7 @@ async def create_snapshot_api(payload: CreateSnapshotRequest):
             provider_payload=payload.provider_payload,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Snapshot source not found") from exc
+        raise HTTPException(status_code=404, detail="快照来源数据不存在") from exc
     return {"item": item}
 
 
@@ -37,5 +37,5 @@ async def create_snapshot_api(payload: CreateSnapshotRequest):
 async def get_snapshot_api(snapshot_id: str, series_slug: str = Query(min_length=1)):
     item = get_snapshot(series_slug.strip(), snapshot_id.strip())
     if item is None:
-        raise HTTPException(status_code=404, detail="Snapshot not found")
+        raise HTTPException(status_code=404, detail="快照不存在")
     return {"item": item}
