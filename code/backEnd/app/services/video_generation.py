@@ -1,3 +1,5 @@
+import base64
+import mimetypes
 import os
 from pathlib import Path
 from typing import Any
@@ -13,18 +15,22 @@ from app.storage.snapshot_store import get_snapshot
 
 def _get_provider_defaults() -> dict[str, Any]:
     return {
-        "name": os.getenv("VIDEO_PROVIDER_NAME", "manual").strip() or "manual",
-        "model": os.getenv("VIDEO_PROVIDER_MODEL", "").strip(),
-        "submit_mode": os.getenv("VIDEO_PROVIDER_SUBMIT_MODE", "manual").strip() or "manual",
-        "base_url": os.getenv("VIDEO_PROVIDER_BASE_URL", "").strip(),
-        "path": os.getenv("VIDEO_PROVIDER_PATH", "").strip() or "/",
+        "name": os.getenv("VIDEO_PROVIDER_NAME", "doubao-seedance-2-0").strip() or "doubao-seedance-2-0",
+        "model": os.getenv("VIDEO_PROVIDER_MODEL", "doubao-seedance-2-0-260128").strip() or "doubao-seedance-2-0-260128",
+        "submit_mode": os.getenv("VIDEO_PROVIDER_SUBMIT_MODE", "generic_http").strip() or "generic_http",
+        "base_url": os.getenv("VIDEO_PROVIDER_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3").strip()
+        or "https://ark.cn-beijing.volces.com/api/v3",
+        "path": os.getenv("VIDEO_PROVIDER_PATH", "/contents/generations/tasks").strip() or "/contents/generations/tasks",
         "api_key": os.getenv("VIDEO_PROVIDER_API_KEY", "").strip(),
         "timeout_seconds": int(os.getenv("VIDEO_PROVIDER_TIMEOUT_SECONDS", "300")),
-        "status_path": os.getenv("VIDEO_PROVIDER_STATUS_PATH", "").strip(),
+        "status_path": os.getenv("VIDEO_PROVIDER_STATUS_PATH", "/contents/generations/tasks/{task_id}").strip()
+        or "/contents/generations/tasks/{task_id}",
         "status_method": os.getenv("VIDEO_PROVIDER_STATUS_METHOD", "GET").strip().upper() or "GET",
         "result_status_path": os.getenv("VIDEO_PROVIDER_RESULT_STATUS_PATH", "status").strip() or "status",
-        "result_video_url_path": os.getenv("VIDEO_PROVIDER_RESULT_VIDEO_URL_PATH", "video_url").strip() or "video_url",
-        "result_cover_url_path": os.getenv("VIDEO_PROVIDER_RESULT_COVER_URL_PATH", "cover_url").strip() or "cover_url",
+        "result_video_url_path": os.getenv("VIDEO_PROVIDER_RESULT_VIDEO_URL_PATH", "content.video_url").strip()
+        or "content.video_url",
+        "result_cover_url_path": os.getenv("VIDEO_PROVIDER_RESULT_COVER_URL_PATH", "content.cover_url").strip()
+        or "content.cover_url",
         "ready_values": os.getenv("VIDEO_PROVIDER_READY_VALUES", "succeeded,completed,success,finished,done,ready").strip(),
         "failed_values": os.getenv("VIDEO_PROVIDER_FAILED_VALUES", "failed,error,cancelled,canceled,rejected").strip(),
         "download_assets": os.getenv("VIDEO_PROVIDER_DOWNLOAD_ASSETS", "true").strip().lower() not in {"0", "false", "no"},
@@ -68,23 +74,71 @@ def build_video_request_from_snapshot(series_slug: str, snapshot_id: str, provid
     provider = _merge_provider_settings(provider_override)
     prompt_package = ((snapshot.get("inputs") or {}).get("prompt_package") or {})
     video_payload = prompt_package.get("video_payload") or {}
-    shot_card_path = ((snapshot.get("inputs") or {}).get("shot_card_path") or "").replace("\\", "/")
+    media_references = prompt_package.get("media_references") or [
+        {
+            "type": "image",
+            "path": image_path,
+            "role": "reference_image",
+        }
+        for image_path in (prompt_package.get("reference_images") or [])
+        if str(image_path).strip()
+    ]
+
+    content: list[dict[str, Any]] = []
+    prompt_text = str(video_payload.get("prompt") or prompt_package.get("positive", "")).strip()
+    if prompt_text:
+        content.append(
+            {
+                "type": "text",
+                "text": prompt_text,
+            }
+        )
+
+    for item in media_references:
+        media_type = str(item.get("type", "")).strip().lower()
+        media_path = str(item.get("path", "")).strip()
+        if not media_path:
+            continue
+        role = str(item.get("role", "")).strip()
+        if media_type == "image":
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": media_path,
+                    },
+                    "role": role or "reference_image",
+                }
+            )
+        elif media_type == "video":
+            content.append(
+                {
+                    "type": "video_url",
+                    "video_url": {
+                        "url": media_path,
+                    },
+                    "role": role or "reference_video",
+                }
+            )
+        elif media_type == "audio":
+            content.append(
+                {
+                    "type": "audio_url",
+                    "audio_url": {
+                        "url": media_path,
+                    },
+                    "role": role or "reference_audio",
+                }
+            )
 
     request_body = {
         "model": provider.get("model", ""),
-        "prompt": video_payload.get("prompt") or prompt_package.get("positive", ""),
-        "negative_prompt": video_payload.get("negative_prompt") or prompt_package.get("negative", ""),
-        "reference_images": prompt_package.get("reference_images", []),
-        "duration_seconds": video_payload.get("duration_seconds", 5),
-        "aspect_ratio": video_payload.get("aspect_ratio", ""),
+        "content": content,
+        "ratio": video_payload.get("ratio") or video_payload.get("aspect_ratio", ""),
         "resolution": video_payload.get("resolution", ""),
-        "metadata": {
-            "series_slug": series_slug,
-            "snapshot_id": snapshot_id,
-            "shot_card_path": shot_card_path,
-            "assembled_from": prompt_package.get("assembled_from", {}),
-            "created_at": utc_now_iso(),
-        },
+        "duration": video_payload.get("duration") or video_payload.get("duration_seconds", 5),
+        "generate_audio": bool(video_payload.get("generate_audio", False)),
+        "watermark": bool(video_payload.get("watermark", False)),
     }
 
     return {
@@ -99,6 +153,54 @@ def _provider_headers(provider: dict[str, Any]) -> dict[str, str]:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     return headers
+
+
+def _is_remote_media_url(value: str) -> bool:
+    normalized = str(value or "").strip().lower()
+    return normalized.startswith("http://") or normalized.startswith("https://") or normalized.startswith("asset://") or normalized.startswith("data:")
+
+
+def _file_to_data_url(series_slug: str, file_path: str, fallback_mime: str) -> str:
+    absolute_path = get_series_path(series_slug) / file_path
+    if not absolute_path.exists():
+        raise ValueError(f"本地素材不存在：{file_path}")
+
+    mime_type = mimetypes.guess_type(absolute_path.name)[0] or fallback_mime
+    encoded = base64.b64encode(absolute_path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def _materialize_request_body(series_slug: str, request_body: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(request_body)
+    content_items: list[dict[str, Any]] = []
+
+    for item in payload.get("content") or []:
+        normalized_item = dict(item)
+        item_type = str(normalized_item.get("type", "")).strip()
+
+        if item_type == "image_url":
+            image_url = dict(normalized_item.get("image_url") or {})
+            url = str(image_url.get("url", "")).strip()
+            if url and not _is_remote_media_url(url):
+                image_url["url"] = _file_to_data_url(series_slug, url, "image/jpeg")
+            normalized_item["image_url"] = image_url
+        elif item_type == "audio_url":
+            audio_url = dict(normalized_item.get("audio_url") or {})
+            url = str(audio_url.get("url", "")).strip()
+            if url and not _is_remote_media_url(url):
+                audio_url["url"] = _file_to_data_url(series_slug, url, "audio/mpeg")
+            normalized_item["audio_url"] = audio_url
+        elif item_type == "video_url":
+            video_url = dict(normalized_item.get("video_url") or {})
+            url = str(video_url.get("url", "")).strip()
+            if url and not _is_remote_media_url(url):
+                raise ValueError("当前本地视频素材不能直接提交给 Seedance，请先提供公网 URL 或 asset:// 素材。")
+            normalized_item["video_url"] = video_url
+
+        content_items.append(normalized_item)
+
+    payload["content"] = content_items
+    return {key: value for key, value in payload.items() if value not in ("", None, [])}
 
 
 def _provider_url(base_url: str, path: str) -> str:
@@ -360,7 +462,8 @@ def submit_video_job(series_slug: str, job_id: str, provider_override: dict[str,
         )
 
     try:
-        remote_payload = _submit_generic_http(provider, request_body)
+        resolved_request_body = _materialize_request_body(series_slug, request_body)
+        remote_payload = _submit_generic_http(provider, resolved_request_body)
         return _finalize_submitted_job(series_slug, job_id, remote_payload)
     except ValueError as exc:
         return _finalize_failed_job(

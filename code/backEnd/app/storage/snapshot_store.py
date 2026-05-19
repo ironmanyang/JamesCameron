@@ -44,11 +44,14 @@ def list_snapshots(series_slug: str) -> list[dict]:
 def _snapshot_asset_paths(series_slug: str, shot: dict) -> dict:
     shot_id = shot["id"]
     storyboard_id = shot["storyboard_id"]
+    shot_media = shot.get("media") or {}
 
     character_paths = []
     scene_paths = []
     prop_paths = []
     images = []
+    videos = []
+    audio = []
 
     for character_id in shot.get("characters", []):
         character = get_character(series_slug, character_id)
@@ -70,6 +73,25 @@ def _snapshot_asset_paths(series_slug: str, shot: dict) -> dict:
         prop_path = f"props/{prop_id}/prop.json"
         prop_paths.append(prop_path)
 
+    for path in [
+        shot_media.get("first_frame_path", ""),
+        shot_media.get("last_frame_path", ""),
+        *(shot_media.get("reference_image_paths") or []),
+    ]:
+        normalized = str(path or "").strip()
+        if normalized:
+            images.append(normalized)
+
+    for path in shot_media.get("reference_video_paths") or []:
+        normalized = str(path or "").strip()
+        if normalized:
+            videos.append(normalized)
+
+    for path in shot_media.get("reference_audio_paths") or []:
+        normalized = str(path or "").strip()
+        if normalized:
+            audio.append(normalized)
+
     return {
         "snapshot_id_seed": f"snap_{shot_id}",
         "inputs": {
@@ -77,11 +99,13 @@ def _snapshot_asset_paths(series_slug: str, shot: dict) -> dict:
             "character_paths": character_paths,
             "scene_paths": scene_paths,
             "prop_paths": prop_paths,
+            "media": shot_media,
             "prompt_package": shot.get("prompt_package", {}),
         },
         "resolved_assets": {
-            "images": images,
-            "audio": [],
+            "images": list(dict.fromkeys(images)),
+            "videos": list(dict.fromkeys(videos)),
+            "audio": list(dict.fromkeys(audio)),
         },
     }
 

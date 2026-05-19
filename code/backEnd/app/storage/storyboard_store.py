@@ -139,6 +139,15 @@ def create_shot(
             "shot_index": 0,
         },
         "dialogue": [],
+        "media": {
+            "mode": "reference_image",
+            "generate_audio": False,
+            "first_frame_path": "",
+            "last_frame_path": "",
+            "reference_image_paths": [],
+            "reference_video_paths": [],
+            "reference_audio_paths": [],
+        },
         "visual": {
             "aspect_ratio": "16:9",
             "style": "cinematic realism",
@@ -171,6 +180,7 @@ def create_shot(
         payload["scene_id"] = scene_id
         payload.setdefault("script_source", {"episode_id": storyboard["episode_id"], "scene_index": 0, "shot_index": 0})
         payload.setdefault("dialogue", [])
+        payload.setdefault("media", {})
         payload.setdefault("characters", [])
         payload.setdefault("props", [])
         payload.setdefault("visual", {})
@@ -201,6 +211,7 @@ def save_shot(series_slug: str, storyboard_id: str, shot_id: str, shot_data: dic
     merged.setdefault("characters", existing.get("characters", []))
     merged.setdefault("props", existing.get("props", []))
     merged.setdefault("dialogue", existing.get("dialogue", []))
+    merged.setdefault("media", existing.get("media", {}))
     merged.setdefault("visual", existing.get("visual", {}))
     merged.setdefault("prompt_package", existing.get("prompt_package", {}))
     merged.setdefault("status", existing.get("status", "draft"))

@@ -110,6 +110,13 @@ const forms = reactive({
   sceneName: "",
   sceneDescription: "",
   shotSceneId: "",
+  shotInputMode: "reference_image",
+  shotGenerateAudio: false,
+  shotFirstFramePath: "",
+  shotLastFramePath: "",
+  shotReferenceImagesText: "",
+  shotReferenceVideosText: "",
+  shotReferenceAudiosText: "",
   shotSize: "medium",
   shotMovement: "static",
   shotDuration: 5,
@@ -131,6 +138,13 @@ const inlineEditing = reactive({
   sceneDescription: "",
   shotId: "",
   shotSceneId: "",
+  shotInputMode: "reference_image",
+  shotGenerateAudio: false,
+  shotFirstFramePath: "",
+  shotLastFramePath: "",
+  shotReferenceImagesText: "",
+  shotReferenceVideosText: "",
+  shotReferenceAudiosText: "",
   shotSize: "medium",
   shotMovement: "static",
   shotDuration: 5,
@@ -153,6 +167,18 @@ const shotMovementOptions = [
   { value: "pan", label: "摇镜" },
   { value: "tracking", label: "跟拍" }
 ];
+
+const shotInputModeOptions = [
+  { value: "reference_image", label: "图片参考" },
+  { value: "first_frame", label: "首帧图生视频" },
+  { value: "first_last_frame", label: "首尾帧图生视频", disabled: true },
+  { value: "reference_video", label: "视频参考", disabled: true },
+  { value: "reference_audio", label: "音频参考", disabled: true },
+  { value: "multimodal_reference", label: "多模态参考" },
+  { value: "text_only", label: "纯文本" }
+];
+
+const disabledShotInputModes = new Set(["first_last_frame", "reference_video", "reference_audio"]);
 
 const healthTextMap = {
   checking: "检测中",
@@ -258,6 +284,12 @@ const selectedJobVideoUrl = computed(() => assetUrl(selectedJobComputed.value?.r
 const selectedJobCoverUrl = computed(() => assetUrl(selectedJobComputed.value?.result?.cover_path || ""));
 const selectedSnapshotImageCount = computed(
   () => state.selectedSnapshot?.resolved_assets?.images?.length || 0
+);
+const selectedSnapshotVideoCount = computed(
+  () => state.selectedSnapshot?.resolved_assets?.videos?.length || 0
+);
+const selectedSnapshotAudioCount = computed(
+  () => state.selectedSnapshot?.resolved_assets?.audio?.length || 0
 );
 
 const selectedCharacterImageEntries = computed(() => {
@@ -406,8 +438,16 @@ function cancelSceneEdit() {
 }
 
 function startShotEdit(item) {
+  const media = item.media || {};
   inlineEditing.shotId = item.id;
   inlineEditing.shotSceneId = item.scene_id || "";
+  inlineEditing.shotInputMode = normalizeShotInputMode(media.mode);
+  inlineEditing.shotGenerateAudio = Boolean(media.generate_audio);
+  inlineEditing.shotFirstFramePath = media.first_frame_path || "";
+  inlineEditing.shotLastFramePath = "";
+  inlineEditing.shotReferenceImagesText = serializeMediaPaths(media.reference_image_paths);
+  inlineEditing.shotReferenceVideosText = "";
+  inlineEditing.shotReferenceAudiosText = "";
   inlineEditing.shotSize = item.visual?.shot_size || "medium";
   inlineEditing.shotMovement = item.visual?.camera_movement || "static";
   inlineEditing.shotDuration = item.visual?.duration_seconds || 5;
@@ -420,6 +460,13 @@ function startShotEdit(item) {
 function cancelShotEdit() {
   inlineEditing.shotId = "";
   inlineEditing.shotSceneId = "";
+  inlineEditing.shotInputMode = "reference_image";
+  inlineEditing.shotGenerateAudio = false;
+  inlineEditing.shotFirstFramePath = "";
+  inlineEditing.shotLastFramePath = "";
+  inlineEditing.shotReferenceImagesText = "";
+  inlineEditing.shotReferenceVideosText = "";
+  inlineEditing.shotReferenceAudiosText = "";
   inlineEditing.shotSize = "medium";
   inlineEditing.shotMovement = "static";
   inlineEditing.shotDuration = 5;
@@ -457,6 +504,38 @@ function formatShotMovement(value) {
   return shotMovementOptions.find((item) => item.value === value)?.label || value || "未设置";
 }
 
+function formatShotInputMode(value) {
+  return shotInputModeOptions.find((item) => item.value === value)?.label || value || "未设置";
+}
+
+function parseMediaPaths(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function serializeMediaPaths(values) {
+  return Array.isArray(values) ? values.filter(Boolean).join("\n") : "";
+}
+
+function normalizeShotInputMode(value) {
+  return disabledShotInputModes.has(value) ? "reference_image" : value || "reference_image";
+}
+
+function buildShotMediaPayload(source) {
+  const mode = normalizeShotInputMode(source.shotInputMode);
+  return {
+    mode,
+    generate_audio: Boolean(source.shotGenerateAudio),
+    first_frame_path: String(source.shotFirstFramePath || "").trim(),
+    last_frame_path: "",
+    reference_image_paths: parseMediaPaths(source.shotReferenceImagesText),
+    reference_video_paths: [],
+    reference_audio_paths: []
+  };
+}
+
 function formatSceneLabel(sceneId) {
   const scene = state.scenes.find((item) => item.id === sceneId);
   if (!scene) {
@@ -473,6 +552,9 @@ function formatShotKeyword(value, fallback = "未设置") {
 function formatProviderName(value) {
   if (!value || value === "manual") {
     return "手动占位";
+  }
+  if (value === "doubao-seedance-2-0") {
+    return "Doubao Seedance 2.0";
   }
   return value;
 }
@@ -1433,6 +1515,7 @@ async function handleCreateShot() {
       scene_id: forms.shotSceneId,
       shot_payload: {
         characters: state.selectedCharacterIds,
+        media: buildShotMediaPayload(forms),
         visual: {
           aspect_ratio: "16:9",
           style: "cinematic realism",
@@ -1477,6 +1560,7 @@ async function handleUpdateShot(item = selectedShot.value) {
     await updateShot(state.selectedSeriesSlug, state.selectedStoryboardId, targetShotId, {
       scene_id: inlineEditing.shotSceneId,
       characters: [...inlineEditing.shotCharacterIds],
+      media: buildShotMediaPayload(inlineEditing),
       visual: {
         ...(targetShot.visual || {}),
         shot_size: inlineEditing.shotSize,
@@ -1544,7 +1628,7 @@ async function handleCreateRenderTask() {
       shot_id: state.selectedShotId,
       provider_payload: {
         source: "frontend-workbench",
-        note: "video-provider-pending"
+        note: "seedance-2.0-ready"
       }
     });
 
@@ -1553,7 +1637,9 @@ async function handleCreateRenderTask() {
       snapshot_id: snapshotResponse.item.id,
       type: "video_generation",
       provider: {
-        name: "manual"
+        name: "doubao-seedance-2-0",
+        submit_mode: "generic_http",
+        model: "doubao-seedance-2-0-260128"
       },
       auto_submit: false
     });
@@ -2312,6 +2398,32 @@ onMounted(boot);
                   :value="item.id" />
               </el-select>
 
+              <el-select v-model="forms.shotInputMode" class="field-select" placeholder="选择 Seedance 输入模式">
+                <el-option v-for="item in shotInputModeOptions" :key="item.value" :label="item.label"
+                  :value="item.value" :disabled="item.disabled" />
+              </el-select>
+
+              <el-checkbox v-model="forms.shotGenerateAudio">生成有声视频</el-checkbox>
+
+              <div class="split-grid">
+                <el-input v-model="forms.shotFirstFramePath" class="field" type="text" :disabled="true"
+                  placeholder="首帧图片路径或公网 URL（可选）" />
+                <el-input v-model="forms.shotLastFramePath" class="field" type="text" :disabled="true"
+                  placeholder="尾帧图片路径或公网 URL（可选）" />
+              </div>
+
+              <el-input v-model="forms.shotReferenceImagesText" class="field-textarea" type="textarea" resize="vertical"
+                :autosize="{ minRows: 2, maxRows: 5 }" placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
+
+              <div class="split-grid">
+                <el-input v-model="forms.shotReferenceVideosText" class="field-textarea" type="textarea"
+                  resize="vertical" :disabled="true" :autosize="{ minRows: 2, maxRows: 5 }"
+                  placeholder="视频参考，一行一个公网 URL 或 asset://..." />
+                <el-input v-model="forms.shotReferenceAudiosText" class="field-textarea" type="textarea"
+                  resize="vertical" :disabled="true" :autosize="{ minRows: 2, maxRows: 5 }"
+                  placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
+              </div>
+
               <div class="split-grid">
                 <el-select v-model="forms.shotSize" class="field-select" placeholder="镜头景别">
                   <el-option v-for="item in shotSizeOptions" :key="item.value" :label="item.label"
@@ -2358,6 +2470,29 @@ onMounted(boot);
                       <el-option v-for="scene in state.scenes" :key="scene.id" :label="`${scene.name} · ${scene.id}`"
                         :value="scene.id" />
                     </el-select>
+                    <el-select v-model="inlineEditing.shotInputMode" class="field-select"
+                      placeholder="选择 Seedance 输入模式">
+                      <el-option v-for="option in shotInputModeOptions" :key="option.value" :label="option.label"
+                        :value="option.value" :disabled="option.disabled" />
+                    </el-select>
+                    <el-checkbox v-model="inlineEditing.shotGenerateAudio">生成有声视频</el-checkbox>
+                    <div class="split-grid">
+                      <el-input v-model="inlineEditing.shotFirstFramePath" class="field" type="text"
+                        placeholder="首帧图片路径或公网 URL（可选）" />
+                      <el-input v-model="inlineEditing.shotLastFramePath" class="field" type="text" :disabled="true"
+                        placeholder="尾帧图片路径或公网 URL（可选）" />
+                    </div>
+                    <el-input v-model="inlineEditing.shotReferenceImagesText" class="field-textarea" type="textarea"
+                      resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
+                      placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
+                    <div class="split-grid">
+                      <el-input v-model="inlineEditing.shotReferenceVideosText" class="field-textarea" type="textarea"
+                        :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
+                        placeholder="视频参考，一行一个公网 URL 或 asset://..." />
+                      <el-input v-model="inlineEditing.shotReferenceAudiosText" class="field-textarea" type="textarea"
+                        :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
+                        placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
+                    </div>
                     <div class="split-grid">
                       <el-select v-model="inlineEditing.shotSize" class="field-select" placeholder="镜头景别">
                         <el-option v-for="option in shotSizeOptions" :key="option.value" :label="option.label"
@@ -2384,11 +2519,16 @@ onMounted(boot);
                 </template>
                 <template v-else>
                   <strong>{{ item.id }}</strong>
+                  <span>{{ formatShotInputMode(item.media?.mode) }}</span>
                   <span>{{ formatShotSize(item.visual.shot_size) }} ·
                     {{ formatShotMovement(item.visual.camera_movement) }}</span>
                   <small>场景：{{ formatSceneLabel(item.scene_id) }}</small>
                   <small>光线：{{ formatShotKeyword(item.visual.lighting) }}</small>
                   <small>色调：{{ formatShotKeyword(item.visual.palette) }}</small>
+                  <small>图 / 视 / 音：{{ (item.media?.reference_image_paths?.length || 0) + (item.media?.first_frame_path ?
+                    1 : 0) + (item.media?.last_frame_path ? 1 : 0) }} /
+                    {{ item.media?.reference_video_paths?.length || 0 }} /
+                    {{ item.media?.reference_audio_paths?.length || 0 }}</small>
                   <small>{{ item.visual.duration_seconds }} 秒 · {{ (item.characters || []).length }} 个角色</small>
                 </template>
               </div>
@@ -2422,7 +2562,7 @@ onMounted(boot);
           </div>
 
           <p class="message muted">
-            视频模型暂未接入。当前可以先完整测试剧本拆解、角色生成、场景生成、镜头包组装，以及任务草稿落盘。
+            已接入 Doubao Seedance 2.0 任务草稿生成。当前可先完成镜头包组装、快照落盘和 Seedance 请求体预览，再按配置提交远端任务。
           </p>
 
           <button class="action-button dark full-width" :disabled="loading.shotPackage"
@@ -2438,16 +2578,23 @@ onMounted(boot);
           <div v-if="selectedShot" class="focus-card">
             <span>当前镜头</span>
             <strong>{{ selectedShot.id }}</strong>
-            <small>{{ selectedShot.scene_id }} · {{ selectedShot.visual.duration_seconds }} 秒</small>
+            <small>{{ formatShotInputMode(selectedShot.media?.mode) }} · {{ selectedShot.scene_id }} ·
+              {{ selectedShot.visual.duration_seconds }} 秒</small>
           </div>
 
           <div v-if="selectedShotPromptPackage?.positive" class="meta-panel">
             <div class="meta-row">
-              <span>参考图数量</span>
-              <strong>{{ selectedShotPromptPackage.reference_images?.length || 0 }}</strong>
+              <span>参考素材数量</span>
+              <strong>{{ selectedShotPromptPackage.media_references?.length || selectedShotPromptPackage.reference_images?.length || 0 }}</strong>
             </div>
             <div class="meta-row">
-              <span>提示词预览</span>
+              <span>图片 / 视频 / 音频</span>
+              <strong>{{ selectedShotPromptPackage.reference_images?.length || 0 }} /
+                {{ selectedShotPromptPackage.reference_videos?.length || 0 }} /
+                {{ selectedShotPromptPackage.reference_audios?.length || 0 }}</strong>
+            </div>
+            <div class="meta-row">
+              <span>Seedance 提示词预览</span>
               <strong class="prompt-preview">{{ selectedShotPromptPackage.positive }}</strong>
             </div>
           </div>
@@ -2549,6 +2696,14 @@ onMounted(boot);
               <div class="meta-row">
                 <span>引用图片数量</span>
                 <strong>{{ selectedSnapshotImageCount }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>引用视频数量</span>
+                <strong>{{ selectedSnapshotVideoCount }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>引用音频数量</span>
+                <strong>{{ selectedSnapshotAudioCount }}</strong>
               </div>
               <div class="meta-row">
                 <span>镜头卡路径</span>

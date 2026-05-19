@@ -41,6 +41,19 @@ Video provider env contract:
 - `VIDEO_PROVIDER_FAILED_VALUES`
 - `VIDEO_PROVIDER_DOWNLOAD_ASSETS`
 
+Current defaults target Doubao Seedance 2.0:
+
+- `VIDEO_PROVIDER_NAME=doubao-seedance-2-0`
+- `VIDEO_PROVIDER_MODEL=doubao-seedance-2-0-260128`
+- `VIDEO_PROVIDER_SUBMIT_MODE=generic_http`
+- `VIDEO_PROVIDER_BASE_URL=https://ark.cn-beijing.volces.com/api/v3`
+- `VIDEO_PROVIDER_PATH=/contents/generations/tasks`
+- `VIDEO_PROVIDER_STATUS_PATH=/contents/generations/tasks/{task_id}`
+
+To submit real tasks, you still need:
+
+- `VIDEO_PROVIDER_API_KEY=<your ark api key>`
+
 Job submit lifecycle:
 
 - `POST /api/jobs/from-snapshot` creates a local prepared job
