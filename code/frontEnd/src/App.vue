@@ -178,8 +178,6 @@ const shotInputModeOptions = [
   { value: "text_only", label: "纯文本" }
 ];
 
-const disabledShotInputModes = new Set(["first_last_frame", "reference_video", "reference_audio"]);
-
 const healthTextMap = {
   checking: "检测中",
   ok: "正常",
@@ -441,13 +439,13 @@ function startShotEdit(item) {
   const media = item.media || {};
   inlineEditing.shotId = item.id;
   inlineEditing.shotSceneId = item.scene_id || "";
-  inlineEditing.shotInputMode = normalizeShotInputMode(media.mode);
+  inlineEditing.shotInputMode = media.mode || "reference_image";
   inlineEditing.shotGenerateAudio = Boolean(media.generate_audio);
   inlineEditing.shotFirstFramePath = media.first_frame_path || "";
-  inlineEditing.shotLastFramePath = "";
+  inlineEditing.shotLastFramePath = media.last_frame_path || "";
   inlineEditing.shotReferenceImagesText = serializeMediaPaths(media.reference_image_paths);
-  inlineEditing.shotReferenceVideosText = "";
-  inlineEditing.shotReferenceAudiosText = "";
+  inlineEditing.shotReferenceVideosText = serializeMediaPaths(media.reference_video_paths);
+  inlineEditing.shotReferenceAudiosText = serializeMediaPaths(media.reference_audio_paths);
   inlineEditing.shotSize = item.visual?.shot_size || "medium";
   inlineEditing.shotMovement = item.visual?.camera_movement || "static";
   inlineEditing.shotDuration = item.visual?.duration_seconds || 5;
@@ -519,20 +517,15 @@ function serializeMediaPaths(values) {
   return Array.isArray(values) ? values.filter(Boolean).join("\n") : "";
 }
 
-function normalizeShotInputMode(value) {
-  return disabledShotInputModes.has(value) ? "reference_image" : value || "reference_image";
-}
-
 function buildShotMediaPayload(source) {
-  const mode = normalizeShotInputMode(source.shotInputMode);
   return {
-    mode,
+    mode: source.shotInputMode || "reference_image",
     generate_audio: Boolean(source.shotGenerateAudio),
     first_frame_path: String(source.shotFirstFramePath || "").trim(),
-    last_frame_path: "",
+    last_frame_path: String(source.shotLastFramePath || "").trim(),
     reference_image_paths: parseMediaPaths(source.shotReferenceImagesText),
-    reference_video_paths: [],
-    reference_audio_paths: []
+    reference_video_paths: parseMediaPaths(source.shotReferenceVideosText),
+    reference_audio_paths: parseMediaPaths(source.shotReferenceAudiosText)
   };
 }
 
@@ -2400,15 +2393,15 @@ onMounted(boot);
 
               <el-select v-model="forms.shotInputMode" class="field-select" placeholder="选择 Seedance 输入模式">
                 <el-option v-for="item in shotInputModeOptions" :key="item.value" :label="item.label"
-                  :value="item.value" :disabled="item.disabled" />
+                  :value="item.value" />
               </el-select>
 
               <el-checkbox v-model="forms.shotGenerateAudio">生成有声视频</el-checkbox>
 
               <div class="split-grid">
-                <el-input v-model="forms.shotFirstFramePath" class="field" type="text" :disabled="true"
+                <el-input v-model="forms.shotFirstFramePath" class="field" type="text"
                   placeholder="首帧图片路径或公网 URL（可选）" />
-                <el-input v-model="forms.shotLastFramePath" class="field" type="text" :disabled="true"
+                <el-input v-model="forms.shotLastFramePath" class="field" type="text"
                   placeholder="尾帧图片路径或公网 URL（可选）" />
               </div>
 
@@ -2417,10 +2410,10 @@ onMounted(boot);
 
               <div class="split-grid">
                 <el-input v-model="forms.shotReferenceVideosText" class="field-textarea" type="textarea"
-                  resize="vertical" :disabled="true" :autosize="{ minRows: 2, maxRows: 5 }"
+                  resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
                   placeholder="视频参考，一行一个公网 URL 或 asset://..." />
                 <el-input v-model="forms.shotReferenceAudiosText" class="field-textarea" type="textarea"
-                  resize="vertical" :disabled="true" :autosize="{ minRows: 2, maxRows: 5 }"
+                  resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
                   placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
               </div>
 
@@ -2473,13 +2466,13 @@ onMounted(boot);
                     <el-select v-model="inlineEditing.shotInputMode" class="field-select"
                       placeholder="选择 Seedance 输入模式">
                       <el-option v-for="option in shotInputModeOptions" :key="option.value" :label="option.label"
-                        :value="option.value" :disabled="option.disabled" />
+                        :value="option.value" />
                     </el-select>
                     <el-checkbox v-model="inlineEditing.shotGenerateAudio">生成有声视频</el-checkbox>
                     <div class="split-grid">
                       <el-input v-model="inlineEditing.shotFirstFramePath" class="field" type="text"
                         placeholder="首帧图片路径或公网 URL（可选）" />
-                      <el-input v-model="inlineEditing.shotLastFramePath" class="field" type="text" :disabled="true"
+                      <el-input v-model="inlineEditing.shotLastFramePath" class="field" type="text"
                         placeholder="尾帧图片路径或公网 URL（可选）" />
                     </div>
                     <el-input v-model="inlineEditing.shotReferenceImagesText" class="field-textarea" type="textarea"
@@ -2487,10 +2480,10 @@ onMounted(boot);
                       placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
                     <div class="split-grid">
                       <el-input v-model="inlineEditing.shotReferenceVideosText" class="field-textarea" type="textarea"
-                        :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
+                        resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
                         placeholder="视频参考，一行一个公网 URL 或 asset://..." />
                       <el-input v-model="inlineEditing.shotReferenceAudiosText" class="field-textarea" type="textarea"
-                        :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
+                        resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
                         placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
                     </div>
                     <div class="split-grid">
