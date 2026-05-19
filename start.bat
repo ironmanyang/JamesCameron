@@ -2,23 +2,23 @@
 chcp 65001 >nul
 set ROOT=%~dp0
 
-if not exist "%ROOT%code\backend\main.py" (
-  echo Missing backend entry: code\backend\main.py
+if not exist "%ROOT%code\backEnd\main.py" (
+  echo Missing backend entry: code\backEnd\main.py
   exit /b 1
 )
 
-if not exist "%ROOT%code\frontend\package.json" (
-  echo Missing frontend package: code\frontend\package.json
+if not exist "%ROOT%code\frontEnd\package.json" (
+  echo Missing frontend package: code\frontEnd\package.json
   exit /b 1
 )
 
 title AI-Video-Backend
-start cmd /k "cd /d %ROOT%code\backend && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload"
+start cmd /k "cd /d %ROOT%code\backEnd && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload"
 
 timeout /t 2 /nobreak >nul
 
 title AI-Video-Frontend
-start cmd /k "cd /d %ROOT%code\frontend && npm run dev"
+start cmd /k "cd /d %ROOT%code\frontEnd && npm run dev"
 
 echo Backend started on http://localhost:8000
 echo Frontend started on http://localhost:8080

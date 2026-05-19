@@ -1035,7 +1035,8 @@ onMounted(boot);
 
           <div class="form-stack">
             <el-input v-model="forms.seriesName" class="field" type="text" placeholder="输入系列名称" />
-            <textarea v-model="forms.seriesDescription" class="field field-textarea compact" placeholder="输入系列简介" />
+            <el-input v-model="forms.seriesDescription" class="field-textarea compact" type="textarea" resize="vertical"
+              placeholder="输入系列简介" />
             <button class="action-button warm" :disabled="loading.createSeries" @click="handleCreateSeries">
               {{ loading.createSeries ? "创建中..." : "新建系列" }}
             </button>
@@ -1135,8 +1136,8 @@ onMounted(boot);
                 </button>
               </div>
             </div>
-            <textarea v-model="state.rawScript" class="field field-textarea editor-textarea"
-              placeholder="在这里粘贴或编写原始剧本内容。" />
+            <el-input v-model="state.rawScript" class="field-textarea editor-textarea" type="textarea"
+              :autosize="{ minRows: 22 }" resize="none" placeholder="在这里粘贴或编写原始剧本内容。" />
           </article>
 
           <article class="panel editor-panel">
@@ -1149,7 +1150,8 @@ onMounted(boot);
                 {{ loading.saveParsed ? "保存中..." : "保存 JSON" }}
               </button>
             </div>
-            <textarea v-model="state.parsedScriptText" class="field field-textarea editor-textarea code-textarea" />
+            <el-input v-model="state.parsedScriptText" class="field-textarea editor-textarea code-textarea"
+              type="textarea" :autosize="{ minRows: 22 }" resize="none" placeholder="" />
           </article>
         </section>
 
@@ -1164,7 +1166,7 @@ onMounted(boot);
 
             <div class="form-stack">
               <el-input v-model="forms.characterName" class="field" type="text" placeholder="输入角色名称" />
-              <textarea v-model="forms.characterBrief" class="field field-textarea compact"
+              <el-input v-model="forms.characterBrief" class="field-textarea compact" type="textarea" resize="vertical"
                 placeholder="输入角色简介、身份、性格等描述" />
               <p class="inline-note">
                 支持两种入口：先用文字描述创建角色；如果是固定角色，也可以在创建后上传官图或参考图，再进行生成。
@@ -1194,8 +1196,8 @@ onMounted(boot);
 
             <div class="form-stack">
               <el-input v-model="forms.sceneName" class="field" type="text" placeholder="输入场景名称" />
-              <textarea v-model="forms.sceneDescription" class="field field-textarea compact"
-                placeholder="输入场景环境、氛围、时代、空间信息" />
+              <el-input v-model="forms.sceneDescription" class="field-textarea compact" type="textarea"
+                resize="vertical" placeholder="输入场景环境、氛围、时代、空间信息" />
               <button class="action-button warm" :disabled="loading.createScene" @click="handleCreateScene">
                 {{ loading.createScene ? "创建中..." : "新建场景" }}
               </button>
@@ -1249,14 +1251,8 @@ onMounted(boot);
                     你可以选择两种生成方式：`参考图+文字生成` 会结合当前角色描述；`仅按参考图生成拼图` 会把上传图作为唯一主体来源，只生成三视图和特征分解拼图。
                   </p>
                 </div>
-                <input
-                  ref="characterSourceInput"
-                  class="field file-input"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  @change="handleCharacterSourceFileChange"
-                />
+                <input ref="characterSourceInput" class="field file-input" type="file" accept="image/*" multiple
+                  @change="handleCharacterSourceFileChange" />
                 <button class="action-button dark" :disabled="loading.characterUpload || !characterSourceFiles.length"
                   @click="handleUploadCharacterSourceImages">
                   {{ loading.characterUpload ? "上传中..." : "上传参考图" }}
@@ -1410,15 +1406,14 @@ onMounted(boot);
                 <el-input v-model="forms.shotPalette" class="field" type="text" placeholder="输入色调关键词" />
               </div>
 
-              <el-input v-model="forms.shotDuration" class="field" type="number" min="1" max="30"
-                placeholder="镜头时长（秒）" />
+              <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="30" :step="1"
+                controls-position="right" />
 
-              <div class="check-grid">
-                <label v-for="item in state.characters" :key="item.id" class="check-card">
-                  <el-input v-model="state.selectedCharacterIds" type="checkbox" :value="item.id" />
-                  <span>{{ item.name }}</span>
-                </label>
-              </div>
+              <el-checkbox-group v-model="state.selectedCharacterIds" class="check-grid">
+                <el-checkbox v-for="item in state.characters" :key="item.id" :value="item.id" class="check-card">
+                  {{ item.name }}
+                </el-checkbox>
+              </el-checkbox-group>
 
               <button class="action-button warm" :disabled="loading.createShot" @click="handleCreateShot">
                 {{ loading.createShot ? "创建中..." : "生成镜头卡" }}
@@ -1567,14 +1562,16 @@ onMounted(boot);
 
             <div class="form-stack">
               <label class="code-label">提交请求体</label>
-              <textarea :value="selectedJobRequestText" class="field field-textarea code-textarea job-code" readonly />
+              <el-input :model-value="selectedJobRequestText" class="field-textarea code-textarea job-code"
+                type="textarea" resize="vertical" readonly />
             </div>
 
             <div
               v-if="selectedJobComputed.remote?.raw_response_path || Object.keys(selectedJobComputed.remote?.raw_response || {}).length"
               class="form-stack">
               <label class="code-label">远端返回</label>
-              <textarea :value="selectedJobResponseText" class="field field-textarea code-textarea job-code" readonly />
+              <el-input :model-value="selectedJobResponseText" class="field-textarea code-textarea job-code"
+                type="textarea" resize="vertical" readonly />
             </div>
           </div>
         </section>
@@ -1894,7 +1891,6 @@ h3 {
 }
 
 .field-textarea {
-  resize: vertical;
   min-height: 100px;
 }
 
@@ -1906,14 +1902,64 @@ h3 {
   min-height: 360px;
 }
 
+.editor-textarea :deep(.el-textarea__inner) {
+  min-height: 360px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
 .code-textarea {
   font-family: "Consolas", "SFMono-Regular", monospace;
-  font-size: 13px;
-  line-height: 1.6;
+}
+
+.code-textarea :deep(.el-textarea__inner) {
+  font-family: "Consolas", "SFMono-Regular", monospace;
 }
 
 .job-code {
   min-height: 180px;
+}
+
+.field-textarea :deep(.el-textarea__inner) {
+  min-height: inherit;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #edf2f7;
+  box-shadow: none;
+}
+
+.field-textarea :deep(.el-textarea__inner::placeholder) {
+  color: rgba(237, 242, 247, 0.34);
+}
+
+.field-textarea :deep(.el-textarea__inner:focus) {
+  border-color: rgba(255, 189, 115, 0.7);
+  box-shadow: 0 0 0 4px rgba(255, 189, 115, 0.12);
+}
+
+.field-number {
+  width: 100%;
+}
+
+.field-number :deep(.el-input__wrapper) {
+  min-height: 50px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+}
+
+.field-number :deep(.el-input__inner) {
+  color: #edf2f7;
+}
+
+.field-number :deep(.el-input-number__decrease),
+.field-number :deep(.el-input-number__increase) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #edf2f7;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .action-button {
@@ -2096,6 +2142,23 @@ h3 {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
+  margin-right: 0;
+  min-width: 0;
+}
+
+.check-card :deep(.el-checkbox__input) {
+  margin-right: 2px;
+}
+
+.check-card :deep(.el-checkbox__label) {
+  color: #edf2f7;
+  padding-left: 0;
+  overflow-wrap: anywhere;
+}
+
+.check-card.is-checked {
+  border-color: rgba(255, 189, 115, 0.56);
+  background: linear-gradient(140deg, rgba(255, 189, 115, 0.18), rgba(255, 255, 255, 0.05));
 }
 
 .preview-image {
@@ -2269,18 +2332,18 @@ h3 {
   }
 }
 
-::v-deep .el-input {
+:deep(.el-input) {
   background: rgba(255, 255, 255, 0.05)
 }
 
-::v-deep .el-input__wrapper {
+:deep(.el-input__wrapper) {
   background: transparent;
   border: none;
   box-shadow: none;
 
 }
 
-::v-deep .el-input__inner {
+:deep(.el-input__inner) {
   color: #fff;
 }
 </style>

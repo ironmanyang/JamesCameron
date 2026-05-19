@@ -1,114 +1,156 @@
-# Local Storage Spec
+# 本地文件存储规范
 
-## Goal
+本文档以当前代码实现为准，描述项目实际使用的本地存储结构、命名规则和各类实体的落盘方式。
 
-This project uses local files only.
+适用范围：
 
-- No database
-- No browser cache as source of truth
-- All business data must be recoverable from disk
-- One series is one isolated workspace
+- 后端：`code/backEnd/app/storage/*`
+- 前端：只通过后端 API 读取这些本地文件
 
-The root storage directory is:
+## 1. 设计原则
+
+本项目采用纯本地文件存储：
+
+- 不使用数据库
+- 不以浏览器缓存作为真实数据源
+- 所有业务状态都必须能从磁盘恢复
+- 所有 JSON 中的路径都以“当前系列根目录相对路径”保存
+
+核心约束：
+
+1. `output/` 是唯一业务数据根目录
+2. 一个系列就是一个独立工作区
+3. 每个实体都以 manifest JSON 为主记录
+4. 图片、音频、视频等二进制文件只保存到磁盘，并在 JSON 中记录相对路径
+5. 可重生成内容允许覆盖当前引用文件，但版本快照必须保留
+
+## 2. 根目录结构
 
 ```text
 output/
+├── _system/
+│   └── storage_manifest.json
+└── {series_slug}/
+    ├── series.json
+    ├── episodes/
+    ├── characters/
+    ├── scenes/
+    ├── props/
+    ├── storyboards/
+    ├── snapshots/
+    ├── jobs/
+    ├── outputs/
+    │   ├── images/
+    │   ├── videos/
+    │   ├── audio/
+    │   └── exports/
+    └── trash/
 ```
 
-## Design Rules
+说明：
 
-1. All entities use file-based manifests as the source of truth.
-2. Binary files such as images, audio, and videos are referenced by relative paths in manifests.
-3. Each entity has a stable `id` and a human-readable `name`.
-4. Regeneration must create a new version record instead of silently overwriting business metadata.
-5. Video generation consumes a fixed snapshot package, not mutable latest state.
-6. Paths stored in JSON must be relative to the current series root.
-7. Frontend rendering must read from backend APIs backed by local files, not from browser-local state.
+- `_system/`：系统级存储元信息
+- `{series_slug}/`：某个系列的根目录
+- `props/`：当前已预留，尚未形成完整业务链路
+- `outputs/`：视频生成等最终产出目录
 
-## Root Structure
+## 3. 系统级文件
 
-```text
-output/
-  _system/
-    storage_manifest.json
-  {series_slug}/
-    series.json
-    episodes/
-    characters/
-    scenes/
-    props/
-    storyboards/
-    snapshots/
-    jobs/
-    outputs/
-    trash/
-```
+### 3.1 `output/_system/storage_manifest.json`
 
-## System Level
+由后端启动时自动创建。
 
-`output/_system/storage_manifest.json`
-
-Purpose:
-
-- stores storage spec version
-- stores global defaults
-- can later store migration info
-
-Suggested shape:
+当前结构：
 
 ```json
 {
   "storage_version": "1.0.0",
-  "created_at": "2026-05-19T08:00:00Z",
-  "updated_at": "2026-05-19T08:00:00Z",
+  "created_at": "2026-05-19T00:00:00Z",
+  "updated_at": "2026-05-19T00:00:00Z",
   "series_root": "output",
   "notes": "Local file storage manifest for AI video workflow"
 }
 ```
 
-## Series Structure
+用途：
 
-Each series is isolated under:
+- 标记当前存储版本
+- 记录存储根目录
+
+## 4. 命名规则
+
+命名逻辑由 `code/backEnd/app/storage/naming.py` 负责。
+
+### 4.1 系列 `slug`
+
+- 来自系列名的 slug 化结果
+- 优先使用英文、数字和 `-`
+- 如果名字无法转为 ASCII，会生成哈希型兜底值，例如 `s-xxxxxxxx`
+- 若已存在同名目录，则自动追加 `-2`、`-3`
+
+示例：
+
+- `My Story` -> `my-story`
+- 中文名可能兜底为 `s-668372f3`
+
+### 4.2 系列 `id`
+
+格式：
+
+```text
+series_{slug中-替换为_}
+```
+
+示例：
+
+```text
+series_my_story
+series_s_668372f3
+```
+
+### 4.3 实体 ID
+
+当前已实现实体前缀：
+
+- 剧集：`ep_001`
+- 角色：`char_xxx`
+- 场景：`scene_xxx`
+- 分镜板：`sb_{episode_id}_v001`
+- 镜头：`shot_001`
+- 快照：`snap_{shot_id}_v001`
+- 任务：`job_YYYYMMDD_HHMMSS_0001`
+
+规则：
+
+- `ep_001` 这类纯数字序号按递增生成
+- `char_` / `scene_` 优先根据名称生成，可冲突时自动追加 `_2`、`_3`
+- 分镜板以剧集为作用域递增版本号
+- 快照以镜头为作用域递增版本号
+
+## 5. 系列目录
+
+### 5.1 路径
 
 ```text
 output/{series_slug}/
 ```
 
-Example:
+### 5.2 清单文件
 
 ```text
-output/dark-night-chase/
-  series.json
-  episodes/
-  characters/
-  scenes/
-  props/
-  storyboards/
-  snapshots/
-  jobs/
-  outputs/
-  trash/
+output/{series_slug}/series.json
 ```
 
-### `series.json`
-
-Purpose:
-
-- series-level metadata
-- visual defaults
-- provider defaults
-- current working pointers
-
-Suggested shape:
+### 5.3 当前结构
 
 ```json
 {
-  "id": "series_dark_night_chase",
-  "slug": "dark-night-chase",
-  "name": "暗夜追踪",
-  "description": "悬疑短剧系列",
-  "created_at": "2026-05-19T08:00:00Z",
-  "updated_at": "2026-05-19T08:00:00Z",
+  "id": "series_s_668372f3",
+  "slug": "s-668372f3",
+  "name": "示例系列",
+  "description": "",
+  "created_at": "2026-05-19T00:00:00Z",
+  "updated_at": "2026-05-19T00:00:00Z",
   "status": "active",
   "defaults": {
     "aspect_ratio": "16:9",
@@ -128,42 +170,58 @@ Suggested shape:
 }
 ```
 
-## Episodes
+### 5.4 子目录
 
-Path:
+创建系列时会自动创建这些子目录：
+
+```text
+episodes/
+characters/
+scenes/
+props/
+storyboards/
+snapshots/
+jobs/
+outputs/images/
+outputs/videos/
+outputs/audio/
+outputs/exports/
+trash/
+```
+
+## 6. 剧集存储
+
+### 6.1 路径
 
 ```text
 output/{series_slug}/episodes/{episode_id}/
 ```
 
-Files:
+### 6.2 目录结构
 
 ```text
-episode.json
-script.raw.txt
-script.parsed.json
-script.versions/
+episodes/{episode_id}/
+├── episode.json
+├── script.raw.txt
+├── script.parsed.json
+└── script.versions/
+    ├── raw_v001.txt
+    └── parsed_v001.json
 ```
 
-### `episode.json`
+### 6.3 `episode.json`
 
-Purpose:
-
-- episode metadata
-- multi-act structure
-- processing status
-
-Suggested shape:
+当前结构：
 
 ```json
 {
   "id": "ep_001",
-  "series_id": "series_dark_night_chase",
+  "series_id": "series_s_668372f3",
   "episode_number": 1,
   "name": "第1集",
   "status": "draft",
-  "created_at": "2026-05-19T08:00:00Z",
-  "updated_at": "2026-05-19T08:00:00Z",
+  "created_at": "2026-05-19T00:00:00Z",
+  "updated_at": "2026-05-19T00:00:00Z",
   "script": {
     "raw_text_path": "episodes/ep_001/script.raw.txt",
     "parsed_path": "episodes/ep_001/script.parsed.json",
@@ -172,67 +230,50 @@ Suggested shape:
 }
 ```
 
-### `script.parsed.json`
+### 6.4 文件说明
 
-Purpose:
+- `script.raw.txt`：原始剧本文本
+- `script.parsed.json`：结构化剧本
+- `script.versions/`：按版本保存历史剧本
 
-- normalized script structure
-- source for character extraction and scene extraction
+## 7. 角色存储
 
-Suggested top-level fields:
-
-```json
-{
-  "episode_id": "ep_001",
-  "title": "第1集",
-  "acts": [],
-  "scenes": [],
-  "extracted_entities": {
-    "characters": [],
-    "scenes": [],
-    "props": []
-  },
-  "source_version": 1
-}
-```
-
-## Characters
-
-Path:
+### 7.1 路径
 
 ```text
 output/{series_slug}/characters/{character_id}/
 ```
 
-Files:
+### 7.2 目录结构
 
 ```text
-character.json
-bible.json
-refs/
-generated/
-versions/
+characters/{character_id}/
+├── character.json
+├── bible.json
+├── refs/
+│   └── character_bible_sheet.jpg
+├── source_uploads/
+├── generated/
+│   └── v003/
+│       ├── character_bible_sheet.jpg
+│       └── prompt_package.json
+└── versions/
+    └── bible_v003.json
 ```
 
-### `character.json`
+### 7.3 `character.json`
 
-Purpose:
-
-- character identity
-- stable visual anchors
-- links to reference assets
-
-Suggested shape:
+当前结构：
 
 ```json
 {
-  "id": "char_nan_zhu",
-  "name": "男主",
+  "id": "char_275a060f",
+  "name": "小八",
   "aliases": [],
-  "series_id": "series_dark_night_chase",
-  "created_at": "2026-05-19T08:00:00Z",
-  "updated_at": "2026-05-19T08:00:00Z",
-  "status": "approved",
+  "series_id": "series_s_668372f3",
+  "created_at": "2026-05-19T00:00:00Z",
+  "updated_at": "2026-05-19T00:00:00Z",
+  "status": "reference_ready",
   "anchors": {
     "biology": "",
     "face": "",
@@ -241,458 +282,369 @@ Suggested shape:
     "palette": "",
     "aura": ""
   },
-  "bible_path": "characters/char_nan_zhu/bible.json",
-  "reference_images": {
-    "front": "characters/char_nan_zhu/refs/front_v001.png",
-    "side": "characters/char_nan_zhu/refs/side_v001.png",
-    "back": "characters/char_nan_zhu/refs/back_v001.png",
-    "sheet": "characters/char_nan_zhu/refs/sheet_v001.png"
-  },
-  "latest_version": 1
-}
-```
-
-### `bible.json`
-
-Purpose:
-
-- expanded character bible
-- prompt data
-- regeneration history
-
-Suggested top-level fields:
-
-```json
-{
-  "character_id": "char_nan_zhu",
-  "version": 1,
   "brief": "",
-  "bible": {},
-  "visual_prompts": {},
-  "notes": [],
-  "generated_from": {
-    "episode_ids": ["ep_001"]
-  }
+  "bible_path": "characters/char_275a060f/bible.json",
+  "reference_images": {
+    "sheet": "characters/char_275a060f/refs/character_bible_sheet.jpg"
+  },
+  "component_images": {
+    "front": "",
+    "side": "",
+    "back": "",
+    "features": ""
+  },
+  "source_images": [],
+  "latest_version": 3
 }
 ```
 
-## Scenes
+说明：
 
-Path:
+- 当前角色主参考图只有 `reference_images.sheet`
+- `component_images` 字段仍保留，但当前单图模式下通常为空
+
+### 7.4 `bible.json`
+
+保存角色圣经的当前版本，包含：
+
+- `summary`
+- `anchors`
+- `bible`
+- `visual_prompts`
+- `negative_prompt`
+- `generated_from`
+- `generation`
+- `reference_images`
+- `source_images`
+
+### 7.5 目录说明
+
+- `refs/`：当前前端直接回显的角色参考拼图
+- `source_uploads/`：用户上传的原始角色参考图
+- `generated/vNNN/`：某次生成的产物快照
+- `versions/`：角色圣经 JSON 历史版本
+
+### 7.6 当前角色出图模式
+
+当前角色参考图已实现为单张拼图：
+
+- `character_bible_sheet.jpg`
+
+内容包括：
+
+- 三视图
+- 特征分解拼图
+
+## 8. 场景存储
+
+### 8.1 路径
 
 ```text
 output/{series_slug}/scenes/{scene_id}/
 ```
 
-Files:
+### 8.2 目录结构
 
 ```text
-scene.json
-refs/
-generated/
-versions/
+scenes/{scene_id}/
+├── scene.json
+├── prompt_package.json
+├── refs/
+│   └── scene_reference_sheet.jpg
+├── generated/
+│   └── v002/
+│       ├── scene_reference_sheet.jpg
+│       └── prompt_package.json
+└── versions/
+    └── scene_v002.json
 ```
 
-### `scene.json`
+### 8.3 `scene.json`
 
-Purpose:
-
-- scene definition
-- visual continuity
-- multi-view references
-
-Suggested shape:
+当前结构：
 
 ```json
 {
-  "id": "scene_001",
-  "name": "废弃仓库",
-  "series_id": "series_dark_night_chase",
+  "id": "scene_05e25ff9",
+  "name": "阳光草地",
+  "series_id": "series_s_668372f3",
   "episode_id": "ep_001",
-  "created_at": "2026-05-19T08:00:00Z",
-  "updated_at": "2026-05-19T08:00:00Z",
-  "status": "approved",
+  "created_at": "2026-05-19T00:00:00Z",
+  "updated_at": "2026-05-19T00:00:00Z",
+  "status": "reference_ready",
   "description": "",
   "visual_profile": {
-    "time": "深夜",
+    "time": "",
     "weather": "",
     "lighting": "",
     "palette": "",
-    "style": ""
+    "style": "",
+    "architecture": "",
+    "atmosphere": "",
+    "key_props": []
   },
+  "prompt_package_path": "scenes/scene_05e25ff9/prompt_package.json",
   "reference_images": {
-    "establishing": "scenes/scene_001/refs/establishing_v001.png",
-    "closeup": "scenes/scene_001/refs/closeup_v001.png",
-    "bird_eye": "scenes/scene_001/refs/bird_eye_v001.png",
-    "detail": "scenes/scene_001/refs/detail_v001.png"
+    "sheet": "scenes/scene_05e25ff9/refs/scene_reference_sheet.jpg"
   },
-  "latest_version": 1
+  "latest_version": 2
 }
 ```
 
-## Props
+### 8.4 `prompt_package.json`
 
-Props are first-class assets because consistency often breaks on clothing, weapons, phones, bags, and accessories.
+保存场景结构化包的当前版本，包含：
 
-Path:
+- `summary`
+- `visual_profile`
+- `view_prompts`
+- `negative_prompt`
+- `generated_from`
+- `generation`
+- `reference_images`
 
-```text
-output/{series_slug}/props/{prop_id}/
-```
+说明：
 
-Files:
+- `view_prompts` 仍然保留四个视角提示词
+- 但当前实际出图已经改为单张拼图 `reference_images.sheet`
 
-```text
-prop.json
-refs/
-versions/
-```
+### 8.5 当前场景出图模式
 
-### `prop.json`
+当前场景参考图已实现为单张拼图：
 
-Suggested shape:
+- `scene_reference_sheet.jpg`
 
-```json
-{
-  "id": "prop_black_phone",
-  "name": "黑色手机",
-  "series_id": "series_dark_night_chase",
-  "created_at": "2026-05-19T08:00:00Z",
-  "updated_at": "2026-05-19T08:00:00Z",
-  "description": "",
-  "reference_images": [],
-  "latest_version": 1
-}
-```
+通常包含：
 
-## Storyboards
+- 定场大景
+- 氛围近景
+- 高角度空间关系
+- 局部细节或关键道具区域
 
-Path:
+## 9. 分镜板与镜头存储
+
+### 9.1 分镜板路径
 
 ```text
 output/{series_slug}/storyboards/{storyboard_id}/
 ```
 
-Files:
+### 9.2 目录结构
 
 ```text
-storyboard.json
-shots/
+storyboards/{storyboard_id}/
+├── storyboard.json
+└── shots/
+    ├── shot_001.json
+    ├── shot_002.json
+    └── ...
 ```
 
-### `storyboard.json`
+### 9.3 `storyboard.json`
 
-Purpose:
-
-- one approved shot plan for one episode
-
-Suggested shape:
+当前结构：
 
 ```json
 {
   "id": "sb_ep_001_v001",
-  "series_id": "series_dark_night_chase",
+  "series_id": "series_s_668372f3",
   "episode_id": "ep_001",
   "version": 1,
-  "created_at": "2026-05-19T08:00:00Z",
-  "updated_at": "2026-05-19T08:00:00Z",
+  "created_at": "2026-05-19T00:00:00Z",
+  "updated_at": "2026-05-19T00:00:00Z",
   "status": "draft",
   "shot_ids": ["shot_001", "shot_002"]
 }
 ```
 
-### `shots/{shot_id}.json`
+### 9.4 `shots/{shot_id}.json`
 
-Purpose:
+镜头文件当前包含这些核心块：
 
-- execution-ready shot card
+- `scene_id`
+- `characters`
+- `props`
+- `script_source`
+- `dialogue`
+- `visual`
+- `prompt_package`
+- `status`
 
-Suggested shape:
+其中：
 
-```json
-{
-  "id": "shot_001",
-  "storyboard_id": "sb_ep_001_v001",
-  "scene_id": "scene_001",
-  "characters": ["char_nan_zhu"],
-  "props": ["prop_black_phone"],
-  "script_source": {
-    "episode_id": "ep_001",
-    "scene_index": 1,
-    "shot_index": 1
-  },
-  "dialogue": [],
-  "visual": {
-    "aspect_ratio": "16:9",
-    "style": "cinematic realism",
-    "resolution": "1080p",
-    "shot_size": "wide",
-    "camera_angle": "eye_level",
-    "camera_movement": "push_in",
-    "lens": "35mm",
-    "depth_of_field": "medium",
-    "lighting": "moody practical light",
-    "palette": "warm_low_saturation",
-    "duration_seconds": 5
-  },
-  "prompt_package": {
-    "positive": "",
-    "negative": "",
-    "reference_images": []
-  },
-  "status": "draft"
-}
-```
+- `visual` 保存前端配置的景别、运镜、镜头时长等
+- `prompt_package` 保存镜头组装后的正负提示词、参考图、上下文信息
 
-## Snapshots
+## 10. 快照存储
 
-Snapshots freeze the exact input package used for generation.
-
-Path:
+### 10.1 路径
 
 ```text
 output/{series_slug}/snapshots/{snapshot_id}/
 ```
 
-Files:
+### 10.2 目录结构
 
 ```text
-snapshot.json
-bundle/
+snapshots/{snapshot_id}/
+├── snapshot.json
+└── bundle/
 ```
 
-### `snapshot.json`
+说明：
 
-Purpose:
+- `bundle/` 当前已创建，但尚未把素材实体拷贝进去
+- 当前更多是通过 `snapshot.json` 固定记录一次提交所依赖的资源路径
 
-- reproducibility
-- rollback
-- audit trail
+### 10.3 `snapshot.json`
 
-Suggested shape:
+当前结构包含：
+
+- `storyboard_id`
+- `shot_id`
+- `inputs`
+- `resolved_assets`
+- `provider_payload`
+
+`resolved_assets.images` 会收集：
+
+- 角色参考拼图
+- 角色上传原图
+- 场景参考拼图
+
+## 11. 任务存储
+
+### 11.1 路径
+
+```text
+output/{series_slug}/jobs/
+```
+
+### 11.2 目录结构
+
+```text
+jobs/
+├── job_20260519_023403_0001.json
+└── _responses/
+    └── job_20260519_023403_0001.response.json
+```
+
+### 11.3 任务文件
+
+每个任务是一个独立 JSON 文件。
+
+当前包含：
+
+- `id`
+- `snapshot_id`
+- `type`
+- `status`
+- `provider`
+- `remote`
+- `result`
+- `error`
+
+### 11.4 远端响应
+
+当任务提交到外部视频服务后，原始返回会单独保存到：
+
+```text
+jobs/_responses/{job_id}.response.json
+```
+
+## 12. 最终产出目录
+
+每个系列下预留：
+
+```text
+outputs/
+├── images/
+├── videos/
+├── audio/
+└── exports/
+```
+
+当前用途：
+
+- `images/`：部分图像类最终产出
+- `videos/`：视频下载结果
+- `audio/`：音频结果或预留
+- `exports/`：导出结果或预留
+
+## 13. 路径保存规则
+
+所有业务 JSON 中的路径都保存为“相对当前系列根目录”的路径。
+
+例如系列根目录为：
+
+```text
+output/s-668372f3/
+```
+
+那么角色参考图保存为：
 
 ```json
 {
-  "id": "snap_shot_001_v001",
-  "series_id": "series_dark_night_chase",
-  "storyboard_id": "sb_ep_001_v001",
-  "shot_id": "shot_001",
-  "created_at": "2026-05-19T08:00:00Z",
-  "inputs": {
-    "shot_card_path": "storyboards/sb_ep_001_v001/shots/shot_001.json",
-    "character_paths": [
-      "characters/char_nan_zhu/character.json"
-    ],
-    "scene_paths": [
-      "scenes/scene_001/scene.json"
-    ],
-    "prop_paths": [
-      "props/prop_black_phone/prop.json"
-    ]
-  },
-  "resolved_assets": {
-    "images": [],
-    "audio": []
-  },
-  "provider_payload": {
-    "model": "",
-    "request_body": {}
-  }
+  "sheet": "characters/char_275a060f/refs/character_bible_sheet.jpg"
 }
 ```
 
-## Jobs
+而不是绝对路径。
 
-Path:
+## 14. 原子写入规则
 
-```text
-output/{series_slug}/jobs/{job_id}.json
-```
+当前后端所有核心写入都使用原子写入：
 
-Purpose:
+- `write_json_atomic`
+- `write_text_atomic`
+- `write_bytes_atomic`
 
-- queue state
-- provider response state
-- retry state
-- final output linkage
+流程：
 
-Suggested shape:
+1. 先写入同目录临时文件
+2. 再用替换方式覆盖正式文件
 
-```json
-{
-  "id": "job_20260519_0001",
-  "series_id": "series_dark_night_chase",
-  "snapshot_id": "snap_shot_001_v001",
-  "type": "video_generation",
-  "status": "queued",
-  "created_at": "2026-05-19T08:00:00Z",
-  "updated_at": "2026-05-19T08:00:00Z",
-  "attempt": 1,
-  "provider": {
-    "name": "seedance",
-    "model": ""
-  },
-  "remote": {
-    "task_id": "",
-    "raw_response_path": ""
-  },
-  "result": {
-    "video_path": "",
-    "cover_path": "",
-    "metrics": {}
-  },
-  "error": {
-    "message": "",
-    "code": ""
-  }
-}
-```
+目的：
 
-## Outputs
+- 降低写入中断导致的半文件风险
 
-Path:
+## 15. 前端读取规则
 
-```text
-output/{series_slug}/outputs/
-  images/
-  videos/
-  audio/
-  exports/
-```
+前端不能直接把浏览器内存当成最终数据源。
 
-Suggested usage:
+当前规则：
 
-- `images/` for approved keyframes and derived stills
-- `videos/` for shot-level clips
-- `audio/` for uploaded reference audio or generated voice/music
-- `exports/` for merged scene-level or episode-level deliverables
+1. 前端发请求到后端 API
+2. 后端从本地文件读取 manifest
+3. 前端只渲染 API 返回结果
+4. 图片与视频通过后端挂载的 `/output/...` 静态路径访问
 
-Recommended naming:
+这保证了：
 
-```text
-videos/{shot_id}_v001.mp4
-images/{shot_id}_cover_v001.png
-exports/{episode_id}_cut_v001.mp4
-```
+- 刷新页面后数据仍一致
+- 本地文件才是唯一真实状态
 
-## Trash
+## 16. 当前版本与过期说明
 
-Path:
+以下内容属于当前实现：
 
-```text
-output/{series_slug}/trash/
-```
+- 角色参考图：单张拼图
+- 场景参考图：单张拼图
+- 角色支持上传参考图
+- 角色支持两种生成模式
+- 分镜镜头包会汇总角色与场景参考资源
 
-Purpose:
+以下内容目前仍是预留或未完全打通：
 
-- soft delete
-- operator recovery
+- `props/` 完整业务链路
+- 视频正式模型稳定接入
+- 快照 `bundle/` 真实素材复制
 
-Rules:
+## 17. 推荐维护方式
 
-1. Delete means move to `trash/`, not immediate permanent removal.
-2. Keep original relative path in delete metadata.
-3. Later a cleanup job can permanently purge old trash.
+后续如果存储结构变更，建议同步更新：
 
-## Naming Rules
-
-### IDs
-
-Use stable ASCII IDs:
-
-- `series_dark_night_chase`
-- `ep_001`
-- `scene_001`
-- `char_nan_zhu`
-- `prop_black_phone`
-- `shot_001`
-
-### Slugs
-
-- folder-safe
-- lowercase
-- words joined by `-`
-
-Example:
-
-```text
-dark-night-chase
-```
-
-### Versions
-
-Use fixed-width numeric versions:
-
-```text
-v001
-v002
-v003
-```
-
-## File Rules
-
-1. JSON uses UTF-8.
-2. All timestamps use ISO 8601 UTC strings.
-3. Paths in manifests must use `/`.
-4. Large binaries must never be embedded into JSON.
-5. A manifest can reference only files inside its own series root.
-
-## Write Rules
-
-1. Write JSON atomically.
-2. Create parent directories before write.
-3. When regenerating assets, update `latest_version` only after new files are safely written.
-4. Never overwrite source script text without writing a new version.
-5. Snapshot writes must be immutable after creation.
-
-## Read Rules
-
-1. Backend is the only component allowed to read disk directly.
-2. Frontend reads through API only.
-3. The backend should rebuild in-memory indexes by scanning `output/` at startup.
-
-## Recommended API Mapping
-
-Storage design should align with backend API modules:
-
-- `series` -> create/list/update `series.json`
-- `episodes` -> save raw script and parsed script
-- `characters` -> manage `character.json` and `bible.json`
-- `scenes` -> manage `scene.json`
-- `props` -> manage `prop.json`
-- `storyboards` -> manage shot cards
-- `snapshots` -> freeze generation package
-- `jobs` -> track long-running generation tasks
-- `outputs` -> expose downloadable files
-
-## Minimum MVP Scope
-
-For the first implementation, only these paths are required:
-
-```text
-output/
-  _system/storage_manifest.json
-  {series_slug}/
-    series.json
-    episodes/{episode_id}/episode.json
-    episodes/{episode_id}/script.raw.txt
-    episodes/{episode_id}/script.parsed.json
-    characters/{character_id}/character.json
-    characters/{character_id}/bible.json
-    scenes/{scene_id}/scene.json
-    storyboards/{storyboard_id}/storyboard.json
-    storyboards/{storyboard_id}/shots/{shot_id}.json
-    snapshots/{snapshot_id}/snapshot.json
-    jobs/{job_id}.json
-    outputs/videos/
-```
-
-This is enough to support:
-
-- series selection
-- script parsing
-- character generation
-- scene generation
-- shot configuration
-- reproducible video generation
-
+1. `docs/local-storage-spec.md`
+2. `docs/operation-guide.md`
+3. 对应 `app/storage/*.py`
+4. 前端任何依赖路径字段的回显逻辑
