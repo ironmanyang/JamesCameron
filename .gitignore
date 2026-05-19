@@ -3,10 +3,17 @@ dist/
 .DS_Store
 *.log
 
-code/frontEnd/node_modules/
-code/backEnd/venv/
-code/backEnd/__pycache__/
-code/backEnd/*.pyc
-
 output/
-.env
+
+code/frontend/node_modules/
+code/frontend/dist/
+code/backend/__pycache__/
+code/backend/.venv/
+code/backend/*.pyc
+code/backend/.env
+code/frontEnd/node_modules/
+code/frontEnd/dist/
+code/backEnd/__pycache__/
+code/backEnd/.venv/
+code/backEnd/*.pyc
+code/backEnd/.env
