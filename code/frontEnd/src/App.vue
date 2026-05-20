@@ -1992,21 +1992,21 @@ onMounted(boot);
                 </template>
               </div>
               <div class="item-actions">
-                <button v-if="isEditingSeries(item.slug)" class="action-button dark compact-button"
+                <el-button v-if="isEditingSeries(item.slug)" class="action-button dark compact-button"
                   :disabled="loading.updateSeries" @click.stop="handleUpdateSeries(item)">
                   {{ loading.updateSeries ? "保存中..." : "保存" }}
-                </button>
-                <button v-else class="action-button ghost compact-button" @click.stop="startSeriesEdit(item)">
+                </el-button>
+                <el-button v-else class="action-button ghost compact-button" @click.stop="startSeriesEdit(item)">
                   编辑
-                </button>
-                <button v-if="isEditingSeries(item.slug)" class="action-button ghost compact-button"
+                </el-button>
+                <el-button v-if="isEditingSeries(item.slug)" class="action-button ghost compact-button"
                   @click.stop="cancelSeriesEdit">
                   取消
-                </button>
-                <button class="action-button ghost danger compact-button" :disabled="loading.deleteSeries"
+                </el-button>
+                <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteSeries"
                   @click.stop="handleDeleteSeries(item)">
                   {{ loading.deleteSeries ? "删除中..." : "删除" }}
-                </button>
+                </el-button>
               </div>
             </div>
 
@@ -2029,9 +2029,9 @@ onMounted(boot);
             <el-input v-model="forms.seriesDescription" class="field-textarea compact" type="textarea" resize="vertical"
               placeholder="输入系列简介" />
             <div class="inline-actions">
-              <button class="action-button warm" :disabled="loading.createSeries" @click="handleCreateSeries">
+              <el-button class="action-button warm" :disabled="loading.createSeries" @click="handleCreateSeries">
                 {{ loading.createSeries ? "创建中..." : "新建系列" }}
-              </button>
+              </el-button>
             </div>
           </div>
         </section>
@@ -2107,10 +2107,10 @@ onMounted(boot);
             </div>
             <div class="inline-actions">
               <el-input v-model="forms.episodeName" class="field inline-field" type="text" placeholder="输入剧集名称" />
-              <button class="action-button dark" style="flex-shrink: 0;" :disabled="loading.createEpisode"
+              <el-button class="action-button dark" style="flex-shrink: 0;" :disabled="loading.createEpisode"
                 @click="handleCreateEpisode">
                 {{ loading.createEpisode ? "创建中..." : "新建剧集" }}
-              </button>
+              </el-button>
             </div>
           </div>
 
@@ -2128,21 +2128,21 @@ onMounted(boot);
                 </template>
               </div>
               <div class="item-actions">
-                <button v-if="isEditingEpisode(item.id)" class="action-button dark compact-button"
+                <el-button v-if="isEditingEpisode(item.id)" class="action-button dark compact-button"
                   :disabled="loading.updateEpisode" @click.stop="handleUpdateEpisode(item)">
                   {{ loading.updateEpisode ? "保存中..." : "保存" }}
-                </button>
-                <button v-else class="action-button ghost compact-button" @click.stop="startEpisodeEdit(item)">
+                </el-button>
+                <el-button v-else class="action-button ghost compact-button" @click.stop="startEpisodeEdit(item)">
                   编辑
-                </button>
-                <button v-if="isEditingEpisode(item.id)" class="action-button ghost compact-button"
+                </el-button>
+                <el-button v-if="isEditingEpisode(item.id)" class="action-button ghost compact-button"
                   @click.stop="cancelEpisodeEdit">
                   取消
-                </button>
-                <button class="action-button ghost danger compact-button" :disabled="loading.deleteEpisode"
+                </el-button>
+                <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteEpisode"
                   @click.stop="handleDeleteEpisode(item)">
                   {{ loading.deleteEpisode ? "删除中..." : "删除" }}
-                </button>
+                </el-button>
               </div>
             </div>
           </div>
@@ -2156,12 +2156,12 @@ onMounted(boot);
                 <h2>剧本输入区</h2>
               </div>
               <div class="inline-actions compact-actions">
-                <button class="action-button ghost" :disabled="loading.analyzeScript" @click="handleAnalyzeScript">
+                <el-button class="action-button ghost" :disabled="loading.analyzeScript" @click="handleAnalyzeScript">
                   {{ loading.analyzeScript ? "分析中..." : "AI 拆解剧本" }}
-                </button>
-                <button class="action-button dark" :disabled="loading.saveRaw" @click="handleSaveRawScript">
+                </el-button>
+                <el-button class="action-button dark" :disabled="loading.saveRaw" @click="handleSaveRawScript">
                   {{ loading.saveRaw ? "保存中..." : "保存原稿" }}
-                </button>
+                </el-button>
               </div>
             </div>
             <el-input v-model="state.rawScript" class="field-textarea editor-textarea" type="textarea"
@@ -2174,9 +2174,9 @@ onMounted(boot);
                 <p class="panel-kicker">结构化结果</p>
                 <h2>解析 JSON</h2>
               </div>
-              <button class="action-button dark" :disabled="loading.saveParsed" @click="handleSaveParsedScript">
+              <el-button class="action-button dark" :disabled="loading.saveParsed" @click="handleSaveParsedScript">
                 {{ loading.saveParsed ? "保存中..." : "保存 JSON" }}
-              </button>
+              </el-button>
             </div>
             <el-input v-model="state.parsedScriptText" class="field-textarea editor-textarea code-textarea"
               type="textarea" :autosize="{ minRows: 22, maxRows: 30 }" resize="auto" placeholder="" />
@@ -2200,9 +2200,10 @@ onMounted(boot);
                 支持两种入口：先用文字描述创建角色；如果是固定角色，也可以在创建后上传官图或参考图，再进行生成。
               </p>
               <div class="inline-actions" style="margin-bottom: 12px;">
-                <button class="action-button warm" :disabled="loading.createCharacter" @click="handleCreateCharacter">
+                <el-button class="action-button warm" :disabled="loading.createCharacter"
+                  @click="handleCreateCharacter">
                   {{ loading.createCharacter ? "创建中..." : "新建角色" }}
-                </button>
+                </el-button>
               </div>
             </div>
 
@@ -2225,21 +2226,21 @@ onMounted(boot);
                   </template>
                 </div>
                 <div class="item-actions">
-                  <button v-if="isEditingCharacter(item.id)" class="action-button dark compact-button"
+                  <el-button v-if="isEditingCharacter(item.id)" class="action-button dark compact-button"
                     :disabled="loading.updateCharacter" @click.stop="handleUpdateCharacter(item)">
                     {{ loading.updateCharacter ? "保存中..." : "保存" }}
-                  </button>
-                  <button v-else class="action-button ghost compact-button" @click.stop="startCharacterEdit(item)">
+                  </el-button>
+                  <el-button v-else class="action-button ghost compact-button" @click.stop="startCharacterEdit(item)">
                     编辑
-                  </button>
-                  <button v-if="isEditingCharacter(item.id)" class="action-button ghost compact-button"
+                  </el-button>
+                  <el-button v-if="isEditingCharacter(item.id)" class="action-button ghost compact-button"
                     @click.stop="cancelCharacterEdit">
                     取消
-                  </button>
-                  <button class="action-button ghost danger compact-button" :disabled="loading.deleteCharacter"
+                  </el-button>
+                  <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteCharacter"
                     @click.stop="handleDeleteCharacter(item)">
                     {{ loading.deleteCharacter ? "删除中..." : "删除" }}
-                  </button>
+                  </el-button>
                 </div>
               </div>
             </div>
@@ -2258,9 +2259,9 @@ onMounted(boot);
               <el-input v-model="forms.sceneDescription" class="field-textarea compact" type="textarea"
                 resize="vertical" placeholder="输入场景环境、氛围、时代、空间信息" />
               <div class="inline-actions" style="margin-bottom: 12px;">
-                <button class="action-button warm" :disabled="loading.createScene" @click="handleCreateScene">
+                <el-button class="action-button warm" :disabled="loading.createScene" @click="handleCreateScene">
                   {{ loading.createScene ? "创建中..." : "新建场景" }}
-                </button>
+                </el-button>
               </div>
             </div>
 
@@ -2283,21 +2284,21 @@ onMounted(boot);
                   </template>
                 </div>
                 <div class="item-actions">
-                  <button v-if="isEditingScene(item.id)" class="action-button dark compact-button"
+                  <el-button v-if="isEditingScene(item.id)" class="action-button dark compact-button"
                     :disabled="loading.updateScene" @click.stop="handleUpdateScene(item)">
                     {{ loading.updateScene ? "保存中..." : "保存" }}
-                  </button>
-                  <button v-else class="action-button ghost compact-button" @click.stop="startSceneEdit(item)">
+                  </el-button>
+                  <el-button v-else class="action-button ghost compact-button" @click.stop="startSceneEdit(item)">
                     编辑
-                  </button>
-                  <button v-if="isEditingScene(item.id)" class="action-button ghost compact-button"
+                  </el-button>
+                  <el-button v-if="isEditingScene(item.id)" class="action-button ghost compact-button"
                     @click.stop="cancelSceneEdit">
                     取消
-                  </button>
-                  <button class="action-button ghost danger compact-button" :disabled="loading.deleteScene"
+                  </el-button>
+                  <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteScene"
                     @click.stop="handleDeleteScene(item)">
                     {{ loading.deleteScene ? "删除中..." : "删除" }}
-                  </button>
+                  </el-button>
                 </div>
               </div>
             </div>
@@ -2312,15 +2313,15 @@ onMounted(boot);
                 <h2>角色圣经</h2>
               </div>
               <div class="inline-actions">
-                <button class="action-button warm" :disabled="loading.characterAssets || !selectedCharacter"
+                <el-button class="action-button warm" :disabled="loading.characterAssets || !selectedCharacter"
                   @click="handleGenerateCharacterAssets('reference_plus_text')">
                   {{ loading.characterAssets ? "生成中..." : (hasUploadedCharacterSourceImages ? "参考图+文字生成" : "按文字生成角色圣经") }}
-                </button>
-                <button v-if="hasUploadedCharacterSourceImages" class="action-button dark"
+                </el-button>
+                <el-button v-if="hasUploadedCharacterSourceImages" class="action-button dark"
                   :disabled="loading.characterAssets || !selectedCharacter"
                   @click="handleGenerateCharacterAssets('reference_subject_only')">
                   {{ loading.characterAssets ? "生成中..." : "仅按参考图生成拼图" }}
-                </button>
+                </el-button>
               </div>
             </div>
 
@@ -2341,12 +2342,20 @@ onMounted(boot);
                     你可以选择两种生成方式：`参考图+文字生成` 会结合当前角色描述；`仅按参考图生成拼图` 会把上传图作为唯一主体来源，只生成三视图和特征分解拼图。
                   </p>
                 </div>
-                <input ref="characterSourceInput" class="field file-input" type="file" accept="image/*" multiple
+                <input ref="characterSourceInput" class="hidden-file-input" type="file" accept="image/*" multiple
                   @change="handleCharacterSourceFileChange" />
-                <button class="action-button dark" :disabled="loading.characterUpload || !characterSourceFiles.length"
+                <div class="upload-actions">
+                  <el-button class="action-button ghost" @click="characterSourceInput?.click()">
+                    选择参考图
+                  </el-button>
+                  <span
+                    class="upload-count">{{ characterSourceFiles.length ? `已选 ${characterSourceFiles.length} 张` : "未选择文件" }}</span>
+                </div>
+                <el-button class="action-button dark"
+                  :disabled="loading.characterUpload || !characterSourceFiles.length"
                   @click="handleUploadCharacterSourceImages">
                   {{ loading.characterUpload ? "上传中..." : "上传参考图" }}
-                </button>
+                </el-button>
               </div>
 
               <div v-if="selectedCharacterSourceEntries.length" class="reference-grid">
@@ -2355,11 +2364,11 @@ onMounted(boot);
                     <strong>上传参考</strong>
                     <small>{{ image.label }}</small>
                   </div>
-                  <button class="action-button ghost danger compact-button"
+                  <el-button class="action-button ghost danger compact-button"
                     :disabled="loading.deleteCharacterSourceImage"
                     @click="handleDeleteCharacterSourceImage(image.path)">
                     {{ loading.deleteCharacterSourceImage ? "删除中..." : "删除参考图" }}
-                  </button>
+                  </el-button>
                   <el-image class="preview-image" :src="assetUrl(image.path)"
                     :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
                     preview-teleported />
@@ -2408,10 +2417,10 @@ onMounted(boot);
                 <p class="panel-kicker">场景工坊</p>
                 <h2>场景包</h2>
               </div>
-              <button class="action-button warm" :disabled="loading.sceneAssets || !selectedScene"
+              <el-button class="action-button warm" :disabled="loading.sceneAssets || !selectedScene"
                 @click="handleGenerateSceneAssets">
                 {{ loading.sceneAssets ? "生成中..." : "生成场景参考拼图" }}
-              </button>
+              </el-button>
             </div>
 
             <div v-if="selectedScene" class="lab-stack">
@@ -2462,9 +2471,9 @@ onMounted(boot);
               <p class="panel-kicker">分镜</p>
               <h2>镜头配置</h2>
             </div>
-            <button class="action-button dark" :disabled="loading.createStoryboard" @click="handleCreateStoryboard">
+            <el-button class="action-button dark" :disabled="loading.createStoryboard" @click="handleCreateStoryboard">
               {{ loading.createStoryboard ? "创建中..." : "新建分镜板" }}
-            </button>
+            </el-button>
           </div>
 
           <div class="mini-list">
@@ -2476,10 +2485,10 @@ onMounted(boot);
                 <small>{{ item.shot_ids.length }} 个镜头</small>
               </div>
               <div class="item-actions">
-                <button class="action-button ghost danger compact-button" :disabled="loading.deleteStoryboard"
+                <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteStoryboard"
                   @click.stop="handleDeleteStoryboard(item)">
                   {{ loading.deleteStoryboard ? "删除中..." : "删除" }}
-                </button>
+                </el-button>
               </div>
             </div>
           </div>
@@ -2547,15 +2556,16 @@ onMounted(boot);
                 </div>
 
                 <div v-if="getShotMediaEntries(forms).length" class="reference-grid shot-media-preview-grid">
-                  <div v-for="image in getShotMediaEntries(forms)" :key="image.key" class="reference-card shot-media-card">
+                  <div v-for="image in getShotMediaEntries(forms)" :key="image.key"
+                    class="reference-card shot-media-card">
                     <div class="reference-header">
                       <strong>{{ image.label }}</strong>
                       <small>{{ image.path }}</small>
                     </div>
-                    <button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
+                    <el-button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
                       @click="removeShotMediaEntry(forms, image.kind, image.path)">
                       移除
-                    </button>
+                    </el-button>
                     <el-image class="preview-image" :src="assetUrl(image.path)"
                       :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
                       preview-teleported />
@@ -2629,9 +2639,10 @@ onMounted(boot);
                 </el-checkbox>
               </el-checkbox-group>
 
-              <button class="action-button warm" :disabled="loading.createShot" @click="handleCreateShot">
+              <el-button class="action-button warm primary-action" :disabled="loading.createShot"
+                @click="handleCreateShot">
                 {{ loading.createShot ? "创建中..." : "生成镜头卡" }}
-              </button>
+              </el-button>
             </div>
           </div>
 
@@ -2698,16 +2709,19 @@ onMounted(boot);
                         </div>
                       </div>
 
-                      <div v-if="getShotMediaEntries(inlineEditing).length" class="reference-grid shot-media-preview-grid">
-                        <div v-for="image in getShotMediaEntries(inlineEditing)" :key="image.key" class="reference-card shot-media-card">
+                      <div v-if="getShotMediaEntries(inlineEditing).length"
+                        class="reference-grid shot-media-preview-grid">
+                        <div v-for="image in getShotMediaEntries(inlineEditing)" :key="image.key"
+                          class="reference-card shot-media-card">
                           <div class="reference-header">
                             <strong>{{ image.label }}</strong>
                             <small>{{ image.path }}</small>
                           </div>
-                          <button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
+                          <el-button class="action-button ghost danger compact-button"
+                            :disabled="loading.shotMediaUpload"
                             @click="removeShotMediaEntry(inlineEditing, image.kind, image.path)">
                             移除
-                          </button>
+                          </el-button>
                           <el-image class="preview-image" :src="assetUrl(image.path)"
                             :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
                             preview-teleported />
@@ -2789,21 +2803,21 @@ onMounted(boot);
                 </template>
               </div>
               <div class="item-actions">
-                <button v-if="isEditingShot(item.id)" class="action-button dark compact-button"
+                <el-button v-if="isEditingShot(item.id)" class="action-button dark compact-button"
                   :disabled="loading.updateShot" @click.stop="handleUpdateShot(item)">
                   {{ loading.updateShot ? "保存中..." : "保存" }}
-                </button>
-                <button v-else class="action-button ghost compact-button" @click.stop="startShotEdit(item)">
+                </el-button>
+                <el-button v-else class="action-button ghost compact-button" @click.stop="startShotEdit(item)">
                   编辑
-                </button>
-                <button v-if="isEditingShot(item.id)" class="action-button ghost compact-button"
+                </el-button>
+                <el-button v-if="isEditingShot(item.id)" class="action-button ghost compact-button"
                   @click.stop="cancelShotEdit">
                   取消
-                </button>
-                <button class="action-button ghost danger compact-button" :disabled="loading.deleteShot"
+                </el-button>
+                <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteShot"
                   @click.stop="handleDeleteShot(item)">
                   {{ loading.deleteShot ? "删除中..." : "删除" }}
-                </button>
+                </el-button>
               </div>
             </div>
           </div>
@@ -2821,15 +2835,15 @@ onMounted(boot);
             已接入 Doubao Seedance 2.0 任务草稿生成。当前可先完成镜头包组装、快照落盘和 Seedance 请求体预览，再按配置提交远端任务。
           </p>
 
-          <button class="action-button dark full-width" :disabled="loading.shotPackage"
+          <el-button class="action-button dark full-width" :disabled="loading.shotPackage"
             @click="handleAssembleShotPackage">
             {{ loading.shotPackage ? "组装中..." : "组装镜头包" }}
-          </button>
+          </el-button>
 
-          <button class="action-button warm full-width" :disabled="loading.createRender"
+          <el-button class="action-button warm full-width primary-action" :disabled="loading.createRender"
             @click="handleCreateRenderTask">
             {{ loading.createRender ? "生成中..." : "生成任务草稿" }}
-          </button>
+          </el-button>
 
           <div v-if="selectedShot" class="focus-card">
             <span>当前镜头</span>
@@ -2864,13 +2878,13 @@ onMounted(boot);
                 <small>关联快照：{{ item.snapshot_id || "暂无" }}</small>
               </div>
               <div class="item-actions">
-                <button class="action-button ghost compact-button" @click.stop="handleOpenJobSnapshot(item)">
+                <el-button class="action-button ghost compact-button" @click.stop="handleOpenJobSnapshot(item)">
                   查看快照
-                </button>
-                <button class="action-button ghost danger compact-button" :disabled="loading.deleteJob"
+                </el-button>
+                <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteJob"
                   @click.stop="handleDeleteJob(item)">
                   {{ loading.deleteJob ? "删除中..." : "删除" }}
-                </button>
+                </el-button>
               </div>
             </div>
             <div v-if="!state.jobs.length" class="empty-state">当前还没有任务草稿。</div>
@@ -2883,21 +2897,21 @@ onMounted(boot);
                 <h3>{{ selectedJobComputed.id }}</h3>
               </div>
               <div class="inline-actions compact-actions">
-                <button class="action-button ghost"
+                <el-button class="action-button ghost"
                   :disabled="loading.snapshotDetail || !selectedJobComputed.snapshot_id"
                   @click="handleOpenJobSnapshot()">
                   {{ loading.snapshotDetail ? "加载中..." : "查看快照" }}
-                </button>
-                <button class="action-button ghost"
+                </el-button>
+                <el-button class="action-button ghost"
                   :disabled="loading.submitJob || loading.jobDetail || selectedJobComputed.status === 'submitting'"
                   @click="handleSubmitJob">
                   {{ loading.submitJob ? "提交中..." : "提交任务" }}
-                </button>
-                <button class="action-button dark"
+                </el-button>
+                <el-button class="action-button dark"
                   :disabled="loading.refreshJob || loading.jobDetail || !selectedJobComputed.remote?.task_id"
                   @click="handleRefreshJob">
                   {{ loading.refreshJob ? "刷新中..." : "刷新状态" }}
-                </button>
+                </el-button>
               </div>
             </div>
 
@@ -3053,14 +3067,29 @@ onMounted(boot);
 }
 
 :global(body) {
+  --ui-accent: #74ff52;
+  --ui-accent-strong: #5cf43d;
+  --ui-accent-cyan: #a8ff8e;
+  --ui-accent-soft: rgba(116, 255, 82, 0.14);
+  --ui-accent-border: rgba(116, 255, 82, 0.28);
+  --ui-panel: rgba(7, 12, 19, 0.68);
+  --ui-panel-strong: rgba(7, 12, 19, 0.8);
+  --ui-card: rgba(255, 255, 255, 0.028);
+  --ui-card-strong: rgba(255, 255, 255, 0.045);
+  --ui-line: rgba(255, 255, 255, 0.07);
+  --ui-gap: 12px;
+  --ui-panel-pad: 16px;
+  --ui-card-pad: 12px;
   margin: 0;
   min-height: 100vh;
-  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "SF Pro Display", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
   background:
-    radial-gradient(circle at 15% 20%, rgba(255, 186, 107, 0.16), transparent 25%),
-    radial-gradient(circle at 80% 0%, rgba(84, 120, 255, 0.18), transparent 28%),
-    linear-gradient(145deg, #0d1426 0%, #101826 38%, #172336 100%);
+    radial-gradient(circle at 14% 12%, rgba(116, 255, 82, 0.2), transparent 10%),
+    radial-gradient(circle at 82% 0%, rgba(168, 255, 142, 0.08), transparent 12%),
+    radial-gradient(circle at 50% 100%, rgba(64, 128, 78, 0.12), transparent 16%),
+    linear-gradient(152deg, #010102 0%, #09111a 36%, #010201 72%, #010102 100%);
   color: #edf2f7;
+  letter-spacing: 0.01em;
 }
 
 :global(button),
@@ -3103,40 +3132,45 @@ onMounted(boot);
 
 :global(.el-select-dropdown__item.is-hovering),
 :global(.el-select-dropdown__item.hover) {
-  background: rgba(255, 189, 115, 0.16);
+  background: rgba(116, 255, 82, 0.16);
 }
 
 :global(.el-select-dropdown__item.selected) {
-  color: #ffbd73;
+  color: var(--ui-accent-cyan);
   font-weight: 700;
 }
 
 .shell {
-  width: min(1600px, calc(100% - 40px));
+  width: min(1720px, calc(100% - 20px));
   margin: 0 auto;
-  padding: 32px 0 48px;
+  padding: 20px 0 34px;
 }
 
 .masthead {
   display: grid;
   grid-template-columns: 1.5fr minmax(320px, 380px);
-  gap: 18px;
-  margin-bottom: 18px;
+  gap: var(--ui-gap);
+  margin-bottom: var(--ui-gap);
+  align-items: stretch;
+}
+
+.masthead> :first-child {
+  padding: 8px 4px 4px;
 }
 
 .eyebrow,
 .panel-kicker {
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   text-transform: uppercase;
-  letter-spacing: 0.24em;
-  font-size: 11px;
-  color: #ffbd73;
+  letter-spacing: 0.18em;
+  font-size: 10px;
+  color: var(--ui-accent);
 }
 
 h1 {
-  margin: 0 0 14px;
-  font-size: clamp(42px, 7vw, 64px);
-  line-height: 0.95;
+  margin: 0 0 10px;
+  font-size: clamp(30px, 4.8vw, 48px);
+  line-height: 1.02;
   letter-spacing: -0.04em;
 }
 
@@ -3146,11 +3180,11 @@ h3 {
 }
 
 h2 {
-  font-size: 24px;
+  font-size: 20px;
 }
 
 h3 {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .lead,
@@ -3158,34 +3192,50 @@ h3 {
 .inline-note,
 .upload-copy {
   margin: 0;
-  line-height: 1.7;
-  color: rgba(237, 242, 247, 0.76);
+  line-height: 1.6;
+  font-size: 12.5px;
+  color: rgba(237, 242, 247, 0.7);
+}
+
+.lead {
+  max-width: 760px;
 }
 
 .status-panel,
 .panel {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 26px;
-  background: rgba(9, 15, 28, 0.62);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--ui-line);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
+    var(--ui-panel);
+  backdrop-filter: blur(18px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 36px rgba(2, 6, 16, 0.28),
+    0 1px 0 rgba(10, 18, 32, 0.2);
 }
 
 .status-panel {
-  padding: 22px;
+  padding: var(--ui-panel-pad);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  gap: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.014)),
+    rgba(8, 14, 22, 0.54);
 }
 
 .status-chip {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: fit-content;
-  padding: 10px 14px;
+  padding: 7px 11px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(116, 255, 82, 0.14), rgba(168, 255, 142, 0.1));
+  border: 1px solid rgba(116, 255, 82, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .status-dot {
@@ -3196,8 +3246,8 @@ h3 {
 }
 
 .status-dot.ok {
-  background: #34d399;
-  box-shadow: 0 0 16px rgba(52, 211, 153, 0.65);
+  background: var(--ui-accent-cyan);
+  box-shadow: 0 0 14px rgba(102, 224, 255, 0.55);
 }
 
 .status-dot.offline {
@@ -3207,51 +3257,164 @@ h3 {
 .workspace {
   display: grid;
   grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(320px, 380px);
-  gap: 18px;
+  gap: var(--ui-gap);
   align-items: start;
 }
 
 .column {
   display: grid;
-  gap: 18px;
+  gap: var(--ui-gap);
   min-width: 0;
 }
 
 .panel {
-  padding: 22px;
+  padding: var(--ui-panel-pad);
   min-width: 0;
   overflow: hidden;
 }
 
 .panel-accent {
   background:
-    linear-gradient(165deg, rgba(255, 185, 105, 0.18), rgba(255, 255, 255, 0.04)),
-    rgba(9, 15, 28, 0.74);
+    linear-gradient(165deg, rgba(116, 255, 82, 0.16), rgba(255, 255, 255, 0.035)),
+    var(--ui-panel-strong);
 }
 
 .hero-panel {
   background:
-    radial-gradient(circle at right top, rgba(255, 188, 109, 0.12), transparent 30%),
-    rgba(9, 15, 28, 0.62);
+    radial-gradient(circle at 88% 18%, rgba(168, 255, 142, 0.13), transparent 24%),
+    radial-gradient(circle at 16% 88%, rgba(116, 255, 82, 0.1), transparent 22%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.032), rgba(255, 255, 255, 0.01)),
+    rgba(6, 11, 18, 0.78);
+  border-color: rgba(116, 255, 82, 0.18);
+  overflow: hidden;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(240px, 300px);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.hero-copy {
+  display: grid;
+  gap: 12px;
+}
+
+.hero-header {
+  margin-bottom: 0;
+}
+
+.hero-lead {
+  margin: 0;
+  max-width: 720px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(237, 242, 247, 0.76);
+}
+
+.hero-poster {
+  position: relative;
+  display: grid;
+  align-content: end;
+  gap: 10px;
+  min-height: 188px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(116, 255, 82, 0.16);
+  background:
+    radial-gradient(circle at 82% 18%, rgba(168, 255, 142, 0.22), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
+    linear-gradient(145deg, rgba(10, 18, 14, 0.94), rgba(6, 11, 18, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 16px 36px rgba(0, 0, 0, 0.28);
+}
+
+.hero-poster::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+
+.hero-poster-tag {
+  display: inline-flex;
+  width: fit-content;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(116, 255, 82, 0.14);
+  border: 1px solid rgba(116, 255, 82, 0.18);
+  color: rgba(226, 255, 216, 0.96);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hero-poster strong {
+  position: relative;
+  z-index: 1;
+  font-size: 26px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.hero-poster small {
+  position: relative;
+  z-index: 1;
+  color: rgba(237, 242, 247, 0.66);
+}
+
+.hero-poster-meta {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero-poster-meta span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(237, 242, 247, 0.76);
+  font-size: 11px;
+}
+
+.hero-poster-glow {
+  position: absolute;
+  right: -24px;
+  top: -20px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(116, 255, 82, 0.28), rgba(116, 255, 82, 0));
+  filter: blur(6px);
 }
 
 .panel-header {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
+  gap: 10px;
+  margin-bottom: 12px;
   min-width: 0;
   flex-wrap: wrap;
 }
 
 .pill,
 .series-slug {
-  padding: 8px 12px;
+  padding: 5px 9px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(237, 242, 247, 0.82);
-  font-size: 12px;
+  background:
+    linear-gradient(135deg, rgba(116, 255, 82, 0.08), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(116, 255, 82, 0.12);
+  color: rgba(237, 242, 247, 0.74);
+  font-size: 11px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .form-stack,
@@ -3260,18 +3423,21 @@ h3 {
 .mini-list,
 .lab-stack {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
 .field {
   width: 100%;
-  padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.05);
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.038);
   color: #edf2f7;
   outline: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 2px 10px rgba(0, 0, 0, 0.08);
 }
 
 .field::placeholder {
@@ -3279,73 +3445,101 @@ h3 {
 }
 
 .field:focus {
-  border-color: rgba(255, 189, 115, 0.7);
-  box-shadow: 0 0 0 4px rgba(255, 189, 115, 0.12);
+  border-color: var(--ui-accent-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 3px rgba(116, 255, 82, 0.11);
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.upload-count {
+  color: rgba(237, 242, 247, 0.62);
+  font-size: 11px;
 }
 
 .file-input {
-  padding-block: 12px;
+  padding-block: 10px;
   cursor: pointer;
 }
 
 .file-input::file-selector-button {
   margin-right: 12px;
   border: none;
-  border-radius: 12px;
-  padding: 10px 14px;
-  background: linear-gradient(135deg, rgba(255, 204, 136, 0.9), rgba(255, 154, 90, 0.9));
-  color: #0f172a;
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, rgba(168, 255, 142, 0.98), rgba(116, 255, 82, 0.94));
+  color: #081109;
   font-weight: 700;
   cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 6px 14px rgba(116, 255, 82, 0.24);
 }
 
 .shot-media-panel {
   display: grid;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--ui-line);
   background:
-    radial-gradient(circle at top right, rgba(255, 189, 115, 0.12), transparent 28%),
-    rgba(255, 255, 255, 0.03);
+    radial-gradient(circle at top right, rgba(168, 255, 142, 0.08), transparent 24%),
+    radial-gradient(circle at left top, rgba(116, 255, 82, 0.07), transparent 20%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+    rgba(255, 255, 255, 0.025);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 20px rgba(0, 0, 0, 0.12);
 }
 
 .inline-shot-media-panel {
-  padding: 14px;
+  padding: 12px;
 }
 
 .shot-media-header {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   align-items: flex-start;
 }
 
 .shot-media-header strong {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .shot-media-header small {
   color: rgba(237, 242, 247, 0.56);
   white-space: nowrap;
+  font-size: 11px;
 }
 
 .shot-media-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .shot-upload-tile,
 .shot-disabled-tile {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 14px;
-  border-radius: 18px;
+  padding: 11px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .shot-upload-tile {
@@ -3355,8 +3549,8 @@ h3 {
 
 .shot-upload-tile:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 189, 115, 0.34);
-  background: rgba(255, 189, 115, 0.08);
+  border-color: var(--ui-accent-border);
+  background: rgba(116, 255, 82, 0.08);
 }
 
 .shot-upload-tile-wide {
@@ -3366,11 +3560,11 @@ h3 {
 .shot-upload-chip {
   display: inline-flex;
   width: fit-content;
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(255, 189, 115, 0.16);
-  color: rgba(255, 228, 196, 0.92);
-  font-size: 12px;
+  background: rgba(116, 255, 82, 0.16);
+  color: rgba(229, 255, 220, 0.94);
+  font-size: 11px;
   line-height: 1;
 }
 
@@ -3402,17 +3596,17 @@ h3 {
 }
 
 .field-select :deep(.el-select__wrapper) {
-  min-height: 50px;
-  border-radius: 16px;
-  padding: 0 16px;
+  min-height: 40px;
+  border-radius: 12px;
+  padding: 0 12px;
   box-shadow: none;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.038);
+  border: 1px solid rgba(255, 255, 255, 0.085);
 }
 
 .field-select :deep(.el-select__wrapper.is-focused) {
-  border-color: rgba(255, 189, 115, 0.7);
-  box-shadow: 0 0 0 4px rgba(255, 189, 115, 0.12);
+  border-color: var(--ui-accent-strong);
+  box-shadow: 0 0 0 3px rgba(116, 255, 82, 0.1);
 }
 
 .field-select :deep(.el-select__placeholder),
@@ -3423,11 +3617,11 @@ h3 {
 }
 
 .field-textarea {
-  min-height: 100px;
+  min-height: 88px;
 }
 
 .field-textarea.compact {
-  min-height: 82px;
+  min-height: 76px;
 }
 
 .editor-textarea {
@@ -3454,10 +3648,10 @@ h3 {
 
 .field-textarea :deep(.el-textarea__inner) {
   min-height: inherit;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  background: rgba(255, 255, 255, 0.038);
   color: #edf2f7;
   box-shadow: none;
 }
@@ -3467,8 +3661,8 @@ h3 {
 }
 
 .field-textarea :deep(.el-textarea__inner:focus) {
-  border-color: rgba(255, 189, 115, 0.7);
-  box-shadow: 0 0 0 4px rgba(255, 189, 115, 0.12);
+  border-color: var(--ui-accent-strong);
+  box-shadow: 0 0 0 3px rgba(116, 255, 82, 0.1);
 }
 
 .field-number {
@@ -3476,10 +3670,10 @@ h3 {
 }
 
 .field-number :deep(.el-input__wrapper) {
-  min-height: 50px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  min-height: 40px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.038);
+  border: 1px solid rgba(255, 255, 255, 0.085);
   box-shadow: none;
 }
 
@@ -3494,37 +3688,79 @@ h3 {
   border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.action-button {
+.action-button,
+.action-button.el-button {
+  --el-button-border-color: transparent;
+  --el-button-bg-color: transparent;
+  --el-button-text-color: inherit;
+  --el-button-hover-text-color: inherit;
+  --el-button-hover-border-color: transparent;
+  --el-button-hover-bg-color: transparent;
+  --el-button-active-border-color: transparent;
+  --el-button-active-bg-color: transparent;
+  --el-button-active-text-color: inherit;
+  --el-button-disabled-border-color: transparent;
+  --el-button-disabled-bg-color: transparent;
+  --el-button-disabled-text-color: inherit;
+  min-height: 38px;
   border: none;
-  border-radius: 16px;
-  padding: 14px 16px;
+  border-radius: 12px;
+  padding: 9px 12px;
   color: #0f172a;
   cursor: pointer;
   font-weight: 700;
-  transition: transform 160ms ease, opacity 160ms ease;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  background-image: none;
+  transition: transform 160ms ease, opacity 160ms ease, box-shadow 160ms ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 7px 16px rgba(0, 0, 0, 0.14);
 }
 
-.action-button:hover:not(:disabled) {
+.action-button.el-button>span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.action-button.el-button+.action-button.el-button {
+  margin-left: 0;
+}
+
+.action-button:hover:not(:disabled),
+.action-button.el-button:hover:not(:disabled) {
   transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 10px 22px rgba(0, 0, 0, 0.2);
 }
 
-.action-button:disabled {
+.action-button:disabled,
+.action-button.el-button.is-disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 .action-button.warm {
-  background: linear-gradient(135deg, #ffcc88 0%, #ff9a5a 100%);
+  background: linear-gradient(135deg, #b5ff9b 0%, #74ff52 100%);
+  color: #081109;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 10px 24px rgba(72, 178, 44, 0.24);
 }
 
 .action-button.dark {
-  background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+  background: linear-gradient(135deg, rgba(245, 249, 244, 0.9), rgba(193, 235, 183, 0.86));
+  color: #0b130d;
 }
 
 .action-button.ghost {
   color: #edf2f7;
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.18), rgba(16, 185, 129, 0.24));
-  border: 1px solid rgba(52, 211, 153, 0.28);
+  background: linear-gradient(135deg, rgba(116, 255, 82, 0.09), rgba(168, 255, 142, 0.07));
+  border: 1px solid rgba(116, 255, 82, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 6px 14px rgba(0, 0, 0, 0.12);
 }
 
 .action-button.danger {
@@ -3533,25 +3769,41 @@ h3 {
   border: 1px solid rgba(251, 113, 133, 0.3);
 }
 
+.action-button.primary-action {
+  min-height: 42px;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
 .action-button.full-width {
   width: 100%;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .compact-button {
-  padding: 10px 12px;
-  font-size: 12px;
+  padding: 7px 9px;
+  font-size: 11px;
+}
+
+.compact-button.el-button {
+  min-height: 30px;
 }
 
 .list-card,
 .episode-chip,
 .mini-card.selectable {
+  position: relative;
   width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ui-line);
+  background: rgba(255, 255, 255, 0.03);
   color: inherit;
   text-align: left;
   cursor: default;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .list-card,
@@ -3562,43 +3814,132 @@ h3 {
 .meta-panel,
 .upload-panel {
   display: grid;
-  gap: 6px;
-  padding: 14px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 5px;
+  padding: var(--ui-card-pad);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.018)),
+    rgba(255, 255, 255, 0.026);
+  border: 1px solid var(--ui-line);
   min-width: 0;
   overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 22px rgba(0, 0, 0, 0.12);
+}
+
+.list-card::before,
+.mini-card.selectable::before,
+.episode-chip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.list-card:not(.active):hover,
+.mini-card.selectable:not(.active):hover,
+.episode-chip:not(.active):hover {
+  transform: translateY(-1px);
+  border-color: rgba(116, 255, 82, 0.18);
+  background:
+    linear-gradient(145deg, rgba(116, 255, 82, 0.08), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.028);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 24px rgba(0, 0, 0, 0.16);
+}
+
+.list-card:not(.active):hover::before,
+.mini-card.selectable:not(.active):hover::before,
+.episode-chip:not(.active):hover::before {
+  opacity: 1;
+  background:
+    linear-gradient(180deg, rgba(190, 255, 176, 0.12), rgba(255, 255, 255, 0)),
+    radial-gradient(circle at 100% 0%, rgba(116, 255, 82, 0.1), transparent 24%);
 }
 
 .list-card.active,
 .mini-card.selectable.active,
 .episode-chip.active {
-  border-color: rgba(255, 189, 115, 0.56);
-  background: linear-gradient(140deg, rgba(255, 189, 115, 0.18), rgba(255, 255, 255, 0.05));
+  border-color: rgba(116, 255, 82, 0.38);
+  background:
+    linear-gradient(140deg, rgba(116, 255, 82, 0.14), rgba(255, 255, 255, 0.045)),
+    rgba(255, 255, 255, 0.028);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(116, 255, 82, 0.12),
+    0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.list-card.active::before,
+.mini-card.selectable.active::before,
+.episode-chip.active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(178, 255, 161, 0.86), rgba(116, 255, 82, 0.26));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.list-card.active::after,
+.mini-card.selectable.active::after,
+.episode-chip.active::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(184, 255, 168, 0.9), rgba(255, 255, 255, 0));
+  opacity: 0.92;
+  pointer-events: none;
 }
 
 .item-body {
   display: grid;
-  gap: 6px;
+  gap: 3px;
   min-width: 0;
   cursor: pointer;
   flex: 1;
 }
 
+.list-card strong,
+.mini-card strong,
+.episode-chip strong,
+.focus-card strong {
+  letter-spacing: -0.02em;
+}
+
 .item-editor {
   display: grid;
-  gap: 8px;
+  gap: 5px;
   min-width: 0;
 }
 
 .item-actions {
   display: flex;
-  gap: 8px;
+  gap: 5px;
   flex-wrap: wrap;
   align-items: center;
-  margin-top: 4px;
+  margin-top: 2px;
   flex-shrink: 0;
+  opacity: 0.84;
+  transition: opacity 160ms ease;
+}
+
+.list-card:hover .item-actions,
+.mini-card.selectable:hover .item-actions,
+.episode-chip:hover .item-actions {
+  opacity: 1;
 }
 
 .item-inline-field {
@@ -3617,6 +3958,16 @@ h3 {
   color: rgba(237, 242, 247, 0.6);
 }
 
+.list-card span,
+.mini-card span,
+.episode-chip span {
+  color: rgba(205, 255, 190, 0.78);
+}
+
+.episode-chip {
+  overflow: hidden;
+}
+
 .summary-grid,
 .studio-grid,
 .lab-grid,
@@ -3625,7 +3976,7 @@ h3 {
 .anchor-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: var(--ui-gap);
   min-width: 0;
 }
 
@@ -3634,21 +3985,30 @@ h3 {
 }
 
 .summary-card {
-  padding: 8px 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
+    rgba(255, 255, 255, 0.026);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   min-width: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 10px 18px rgba(0, 0, 0, 0.14);
 }
 
 .summary-card span {
   display: block;
-  margin-bottom: 6px;
-  color: rgba(237, 242, 247, 0.66);
+  margin-bottom: 2px;
+  color: rgba(237, 242, 247, 0.62);
+  font-size: 11px;
 }
 
 .summary-card strong {
-  font-size: 28px;
+  font-size: 22px;
+  letter-spacing: -0.03em;
 }
 
 .code-label {
@@ -3660,7 +4020,7 @@ h3 {
 
 .inline-actions {
   display: flex;
-  gap: 10px;
+  gap: 6px;
   align-items: center;
   min-width: 0;
   flex-wrap: nowrap;
@@ -3677,23 +4037,23 @@ h3 {
 
 .episode-strip {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .episode-chip {
   display: flex;
-  gap: 20px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  min-width: 220px;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  min-width: 210px;
 }
 
 .subsection {
   display: grid;
-  gap: 12px;
-  margin: 18px 0;
-  padding-top: 18px;
+  gap: 8px;
+  margin: 12px 0;
+  padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -3701,7 +4061,7 @@ h3 {
 .check-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -3709,8 +4069,8 @@ h3 {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   margin-right: 0;
@@ -3728,8 +4088,8 @@ h3 {
 }
 
 .check-card.is-checked {
-  border-color: rgba(255, 189, 115, 0.56);
-  background: linear-gradient(140deg, rgba(255, 189, 115, 0.18), rgba(255, 255, 255, 0.05));
+  border-color: rgba(116, 255, 82, 0.42);
+  background: linear-gradient(140deg, rgba(116, 255, 82, 0.18), rgba(168, 255, 142, 0.06));
 }
 
 .preview-image {
@@ -3821,8 +4181,8 @@ h3 {
 
 .message {
   margin: 0 0 12px;
-  padding: 14px 16px;
-  border-radius: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
   line-height: 1.6;
 }
 
@@ -3837,16 +4197,39 @@ h3 {
 }
 
 .message.muted {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(135deg, rgba(116, 255, 82, 0.06), rgba(255, 255, 255, 0.03)),
+    rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(116, 255, 82, 0.1);
   color: rgba(237, 242, 247, 0.7);
 }
 
 .empty-state {
-  padding: 18px;
-  border-radius: 18px;
-  border: 1px dashed rgba(255, 255, 255, 0.12);
-  color: rgba(237, 242, 247, 0.58);
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 110px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px dashed rgba(116, 255, 82, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(116, 255, 82, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.014)),
+    rgba(255, 255, 255, 0.02);
+  color: rgba(237, 242, 247, 0.6);
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.empty-state::before {
+  content: "";
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(220, 255, 212, 0.92), rgba(116, 255, 82, 0.2) 42%, rgba(116, 255, 82, 0) 72%);
+  box-shadow: 0 0 22px rgba(116, 255, 82, 0.18);
 }
 
 @media (max-width: 1420px) {
@@ -3858,11 +4241,16 @@ h3 {
     grid-column: 1 / -1;
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .hero-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 1080px) {
 
   .masthead,
+  .hero-grid,
   .workspace,
   .editor-grid,
   .studio-grid,
@@ -3908,6 +4296,10 @@ h3 {
   .shot-upload-tile-wide {
     grid-column: span 1;
   }
+
+  .hero-poster {
+    min-height: 160px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -3918,12 +4310,17 @@ h3 {
 
   .panel,
   .status-panel {
-    padding: 18px;
-    border-radius: 22px;
+    padding: 16px;
+    border-radius: 18px;
   }
 
   h1 {
     font-size: 42px;
+  }
+
+  .hero-poster {
+    padding: 14px;
+    min-height: 148px;
   }
 }
 
