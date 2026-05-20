@@ -2028,11 +2028,9 @@ onMounted(boot);
             <el-input v-model="forms.seriesName" class="field" type="text" placeholder="输入系列名称" />
             <el-input v-model="forms.seriesDescription" class="field-textarea compact" type="textarea" resize="vertical"
               placeholder="输入系列简介" />
-            <div class="inline-actions">
-              <el-button class="action-button warm" :disabled="loading.createSeries" @click="handleCreateSeries">
-                {{ loading.createSeries ? "创建中..." : "新建系列" }}
-              </el-button>
-            </div>
+            <el-button class="action-button warm" :disabled="loading.createSeries" @click="handleCreateSeries">
+              {{ loading.createSeries ? "创建中..." : "新建系列" }}
+            </el-button>
           </div>
         </section>
 
@@ -2105,7 +2103,7 @@ onMounted(boot);
               <p class="panel-kicker">剧集</p>
               <h2>剧本与结构化拆解</h2>
             </div>
-            <div class="inline-actions">
+            <div class="inline-actions" style="flex-shrink: 0;display: flex;gap: 12px;">
               <el-input v-model="forms.episodeName" class="field inline-field" type="text" placeholder="输入剧集名称" />
               <el-button class="action-button dark" style="flex-shrink: 0;" :disabled="loading.createEpisode"
                 @click="handleCreateEpisode">
@@ -2155,7 +2153,7 @@ onMounted(boot);
                 <p class="panel-kicker">原始剧本</p>
                 <h2>剧本输入区</h2>
               </div>
-              <div class="inline-actions compact-actions">
+              <div class="inline-actions compact-actions" style="flex-shrink: 0;display: flex;gap: 12px;">
                 <el-button class="action-button ghost" :disabled="loading.analyzeScript" @click="handleAnalyzeScript">
                   {{ loading.analyzeScript ? "分析中..." : "AI 拆解剧本" }}
                 </el-button>
@@ -2199,12 +2197,10 @@ onMounted(boot);
               <p class="inline-note">
                 支持两种入口：先用文字描述创建角色；如果是固定角色，也可以在创建后上传官图或参考图，再进行生成。
               </p>
-              <div class="inline-actions" style="margin-bottom: 12px;">
-                <el-button class="action-button warm" :disabled="loading.createCharacter"
-                  @click="handleCreateCharacter">
-                  {{ loading.createCharacter ? "创建中..." : "新建角色" }}
-                </el-button>
-              </div>
+              <el-button class="action-button warm" :disabled="loading.createCharacter" @click="handleCreateCharacter"
+                style="margin-bottom: 12px;">
+                {{ loading.createCharacter ? "创建中..." : "新建角色" }}
+              </el-button>
             </div>
 
             <div class="mini-list">
@@ -2258,11 +2254,11 @@ onMounted(boot);
               <el-input v-model="forms.sceneName" class="field" type="text" placeholder="输入场景名称" />
               <el-input v-model="forms.sceneDescription" class="field-textarea compact" type="textarea"
                 resize="vertical" placeholder="输入场景环境、氛围、时代、空间信息" />
-              <div class="inline-actions" style="margin-bottom: 12px;">
-                <el-button class="action-button warm" :disabled="loading.createScene" @click="handleCreateScene">
-                  {{ loading.createScene ? "创建中..." : "新建场景" }}
-                </el-button>
-              </div>
+
+              <el-button class="action-button warm" :disabled="loading.createScene" @click="handleCreateScene"
+                style="margin-bottom: 12px;">
+                {{ loading.createScene ? "创建中..." : "新建场景" }}
+              </el-button>
             </div>
 
             <div class="mini-list">
@@ -2312,7 +2308,7 @@ onMounted(boot);
                 <p class="panel-kicker">角色工坊</p>
                 <h2>角色圣经</h2>
               </div>
-              <div class="inline-actions">
+              <div class="inline-actions" style="flex-shrink: 0;display: flex;gap: 12px;">
                 <el-button class="action-button warm" :disabled="loading.characterAssets || !selectedCharacter"
                   @click="handleGenerateCharacterAssets('reference_plus_text')">
                   {{ loading.characterAssets ? "生成中..." : (hasUploadedCharacterSourceImages ? "参考图+文字生成" : "按文字生成角色圣经") }}
@@ -2574,39 +2570,40 @@ onMounted(boot);
               </div>
 
               <template v-if="false">
-              <div class="split-grid">
-                <input class="field file-input" type="file" accept="image/*" @change="handleShotMediaUpload(forms, 'first_frame', $event)"
-                  placeholder="首帧图片路径或公网 URL（可选）" />
-                <input class="field file-input" type="file" accept="image/*" @change="handleShotMediaUpload(forms, 'last_frame', $event)"
-                  placeholder="尾帧图片路径或公网 URL（可选）" />
-              </div>
-
-              <input class="field file-input" type="file" accept="image/*" multiple @change="handleShotMediaUpload(forms, 'reference_images', $event)"
-                :autosize="{ minRows: 2, maxRows: 5 }" placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
-
-              <div class="split-grid">
-                <div v-if="getShotMediaEntries(forms).length" class="reference-grid">
-                  <div v-for="image in getShotMediaEntries(forms)" :key="image.key" class="reference-card">
-                    <div class="reference-header">
-                      <strong>{{ image.label }}</strong>
-                      <small>{{ image.path }}</small>
-                    </div>
-                    <button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
-                      @click="removeShotMediaEntry(forms, image.kind, image.path)">
-                      移除
-                    </button>
-                    <el-image class="preview-image" :src="assetUrl(image.path)"
-                      :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
-                      preview-teleported />
-                  </div>
+                <div class="split-grid">
+                  <input class="field file-input" type="file" accept="image/*"
+                    @change="handleShotMediaUpload(forms, 'first_frame', $event)" placeholder="首帧图片路径或公网 URL（可选）" />
+                  <input class="field file-input" type="file" accept="image/*"
+                    @change="handleShotMediaUpload(forms, 'last_frame', $event)" placeholder="尾帧图片路径或公网 URL（可选）" />
                 </div>
-                <el-input v-model="forms.shotReferenceVideosText" class="field-textarea" type="textarea" :disabled="true"
-                  resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
-                  placeholder="视频参考，一行一个公网 URL 或 asset://..." />
-                <el-input v-model="forms.shotReferenceAudiosText" class="field-textarea" type="textarea" :disabled="true"
-                  resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
-                  placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
-              </div>
+
+                <input class="field file-input" type="file" accept="image/*" multiple
+                  @change="handleShotMediaUpload(forms, 'reference_images', $event)"
+                  :autosize="{ minRows: 2, maxRows: 5 }" placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
+
+                <div class="split-grid">
+                  <div v-if="getShotMediaEntries(forms).length" class="reference-grid">
+                    <div v-for="image in getShotMediaEntries(forms)" :key="image.key" class="reference-card">
+                      <div class="reference-header">
+                        <strong>{{ image.label }}</strong>
+                        <small>{{ image.path }}</small>
+                      </div>
+                      <button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
+                        @click="removeShotMediaEntry(forms, image.kind, image.path)">
+                        移除
+                      </button>
+                      <el-image class="preview-image" :src="assetUrl(image.path)"
+                        :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
+                        preview-teleported />
+                    </div>
+                  </div>
+                  <el-input v-model="forms.shotReferenceVideosText" class="field-textarea" type="textarea"
+                    :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
+                    placeholder="视频参考，一行一个公网 URL 或 asset://..." />
+                  <el-input v-model="forms.shotReferenceAudiosText" class="field-textarea" type="textarea"
+                    :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
+                    placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
+                </div>
               </template>
 
               <div class="split-grid">
@@ -2730,38 +2727,42 @@ onMounted(boot);
                     </div>
 
                     <template v-if="false">
-                    <div class="split-grid">
-                      <input class="field file-input" type="file" accept="image/*" @change="handleShotMediaUpload(inlineEditing, 'first_frame', $event)"
-                        placeholder="首帧图片路径或公网 URL（可选）" />
-                      <input class="field file-input" type="file" accept="image/*" @change="handleShotMediaUpload(inlineEditing, 'last_frame', $event)"
-                        placeholder="尾帧图片路径或公网 URL（可选）" />
-                    </div>
-                    <input class="field file-input" type="file" accept="image/*" multiple @change="handleShotMediaUpload(inlineEditing, 'reference_images', $event)"
-                      resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
-                      placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
-                    <div class="split-grid">
-                      <div v-if="getShotMediaEntries(inlineEditing).length" class="reference-grid">
-                        <div v-for="image in getShotMediaEntries(inlineEditing)" :key="image.key" class="reference-card">
-                          <div class="reference-header">
-                            <strong>{{ image.label }}</strong>
-                            <small>{{ image.path }}</small>
-                          </div>
-                          <button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
-                            @click="removeShotMediaEntry(inlineEditing, image.kind, image.path)">
-                            移除
-                          </button>
-                          <el-image class="preview-image" :src="assetUrl(image.path)"
-                            :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
-                            preview-teleported />
-                        </div>
+                      <div class="split-grid">
+                        <input class="field file-input" type="file" accept="image/*"
+                          @change="handleShotMediaUpload(inlineEditing, 'first_frame', $event)"
+                          placeholder="首帧图片路径或公网 URL（可选）" />
+                        <input class="field file-input" type="file" accept="image/*"
+                          @change="handleShotMediaUpload(inlineEditing, 'last_frame', $event)"
+                          placeholder="尾帧图片路径或公网 URL（可选）" />
                       </div>
-                      <el-input v-model="inlineEditing.shotReferenceVideosText" class="field-textarea" type="textarea" :disabled="true"
-                        resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
-                        placeholder="视频参考，一行一个公网 URL 或 asset://..." />
-                      <el-input v-model="inlineEditing.shotReferenceAudiosText" class="field-textarea" type="textarea" :disabled="true"
-                        resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
-                        placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
-                    </div>
+                      <input class="field file-input" type="file" accept="image/*" multiple
+                        @change="handleShotMediaUpload(inlineEditing, 'reference_images', $event)" resize="vertical"
+                        :autosize="{ minRows: 2, maxRows: 5 }" placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
+                      <div class="split-grid">
+                        <div v-if="getShotMediaEntries(inlineEditing).length" class="reference-grid">
+                          <div v-for="image in getShotMediaEntries(inlineEditing)" :key="image.key"
+                            class="reference-card">
+                            <div class="reference-header">
+                              <strong>{{ image.label }}</strong>
+                              <small>{{ image.path }}</small>
+                            </div>
+                            <button class="action-button ghost danger compact-button"
+                              :disabled="loading.shotMediaUpload"
+                              @click="removeShotMediaEntry(inlineEditing, image.kind, image.path)">
+                              移除
+                            </button>
+                            <el-image class="preview-image" :src="assetUrl(image.path)"
+                              :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
+                              preview-teleported />
+                          </div>
+                        </div>
+                        <el-input v-model="inlineEditing.shotReferenceVideosText" class="field-textarea" type="textarea"
+                          :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
+                          placeholder="视频参考，一行一个公网 URL 或 asset://..." />
+                        <el-input v-model="inlineEditing.shotReferenceAudiosText" class="field-textarea" type="textarea"
+                          :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
+                          placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
+                      </div>
                     </template>
                     <div class="split-grid">
                       <el-select v-model="inlineEditing.shotSize" class="field-select" placeholder="镜头景别">
@@ -2863,7 +2864,7 @@ onMounted(boot);
                 {{ selectedShotPromptPackage.reference_videos?.length || 0 }} /
                 {{ selectedShotPromptPackage.reference_audios?.length || 0 }}</strong>
             </div>
-            <div class="meta-row">
+            <div class="meta-row meta-row-wide">
               <span>Seedance 提示词预览</span>
               <strong class="prompt-preview">{{ selectedShotPromptPackage.positive }}</strong>
             </div>
@@ -3399,9 +3400,23 @@ h3 {
   align-items: start;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   min-width: 0;
   flex-wrap: wrap;
+}
+
+.panel-header>div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.panel-header h2,
+.panel-header h3 {
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 
 .pill,
@@ -3460,10 +3475,18 @@ h3 {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: space-between;
 }
 
 .upload-count {
-  color: rgba(237, 242, 247, 0.62);
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(116, 255, 82, 0.1);
+  color: rgba(237, 242, 247, 0.68);
   font-size: 11px;
 }
 
@@ -3487,19 +3510,20 @@ h3 {
 }
 
 .shot-media-panel {
+  position: relative;
   display: grid;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid var(--ui-line);
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(116, 255, 82, 0.14);
   background:
-    radial-gradient(circle at top right, rgba(168, 255, 142, 0.08), transparent 24%),
-    radial-gradient(circle at left top, rgba(116, 255, 82, 0.07), transparent 20%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+    radial-gradient(circle at top right, rgba(168, 255, 142, 0.1), transparent 24%),
+    radial-gradient(circle at left top, rgba(116, 255, 82, 0.08), transparent 20%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.016)),
     rgba(255, 255, 255, 0.025);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 8px 20px rgba(0, 0, 0, 0.12);
+    0 12px 28px rgba(0, 0, 0, 0.16);
 }
 
 .inline-shot-media-panel {
@@ -3515,13 +3539,19 @@ h3 {
 
 .shot-media-header strong {
   display: block;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  font-size: 13px;
+  letter-spacing: -0.01em;
 }
 
 .shot-media-header small {
-  color: rgba(237, 242, 247, 0.56);
+  color: rgba(237, 242, 247, 0.72);
   white-space: nowrap;
   font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(116, 255, 82, 0.1);
 }
 
 .shot-media-grid {
@@ -3535,11 +3565,15 @@ h3 {
   display: grid;
   gap: 6px;
   min-width: 0;
-  padding: 11px;
+  padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.016)),
+    rgba(255, 255, 255, 0.028);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 18px rgba(0, 0, 0, 0.1);
 }
 
 .shot-upload-tile {
@@ -3550,7 +3584,9 @@ h3 {
 .shot-upload-tile:hover {
   transform: translateY(-1px);
   border-color: var(--ui-accent-border);
-  background: rgba(116, 255, 82, 0.08);
+  background:
+    linear-gradient(145deg, rgba(116, 255, 82, 0.09), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.03);
 }
 
 .shot-upload-tile-wide {
@@ -3826,6 +3862,35 @@ h3 {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 8px 22px rgba(0, 0, 0, 0.12);
+}
+
+.focus-card,
+.meta-panel,
+.reference-card,
+.upload-panel {
+  position: relative;
+  border-color: rgba(255, 255, 255, 0.07);
+  background:
+    radial-gradient(circle at top right, rgba(116, 255, 82, 0.07), transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.016)),
+    rgba(255, 255, 255, 0.026);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 24px rgba(0, 0, 0, 0.14);
+}
+
+.focus-card::before,
+.meta-panel::before,
+.reference-card::before,
+.upload-panel::before,
+.shot-media-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
+  opacity: 0.8;
 }
 
 .list-card::before,
@@ -4126,8 +4191,78 @@ h3 {
   place-items: center;
   min-height: 220px;
   border-radius: 14px;
-  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border: 1px dashed rgba(116, 255, 82, 0.16);
+  background:
+    radial-gradient(circle at 50% 24%, rgba(116, 255, 82, 0.08), transparent 30%),
+    rgba(255, 255, 255, 0.02);
   color: rgba(237, 242, 247, 0.5);
+}
+
+.reference-card {
+  gap: 12px;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.reference-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(116, 255, 82, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 28px rgba(0, 0, 0, 0.16);
+}
+
+.reference-header {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.reference-header strong {
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.reference-header small {
+  line-height: 1.5;
+}
+
+.upload-panel {
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.upload-panel>div:first-child {
+  display: grid;
+  gap: 8px;
+}
+
+.upload-panel strong {
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.focus-card {
+  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.focus-card span {
+  color: rgba(200, 255, 184, 0.78);
+  font-size: 11px;
+}
+
+.focus-card strong {
+  font-size: 18px;
+}
+
+.focus-card small {
+  color: rgba(237, 242, 247, 0.58);
 }
 
 .meta-panel,
@@ -4135,18 +4270,49 @@ h3 {
   gap: 10px;
 }
 
+.meta-panel {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  padding: 14px;
+  border-radius: 16px;
+}
+
 .meta-row,
 .meta-list>div {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
+}
+
+.meta-row {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+    rgba(255, 255, 255, 0.022);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.meta-row-wide {
+  grid-column: 1 / -1;
+}
+
+.meta-row strong {
+  line-height: 1.55;
 }
 
 .prompt-preview {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.6;
+}
+
+.subsection>h3 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(201, 255, 190, 0.72);
 }
 
 .list-card strong,
