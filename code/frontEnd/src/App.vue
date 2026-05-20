@@ -45,7 +45,8 @@ import {
   updateScene,
   updateShot,
   updateSeries,
-  uploadCharacterSourceImages
+  uploadCharacterSourceImages,
+  uploadShotMediaImages
 } from "./services/api";
 
 const health = ref("checking");
@@ -89,6 +90,7 @@ const loading = reactive({
   createRender: false,
   characterAssets: false,
   characterUpload: false,
+  shotMediaUpload: false,
   deleteCharacterSourceImage: false,
   characterBible: false,
   sceneAssets: false,
@@ -177,6 +179,14 @@ const shotInputModeOptions = [
   { value: "multimodal_reference", label: "多模态参考" },
   { value: "text_only", label: "纯文本" }
 ];
+
+shotInputModeOptions.forEach((item) => {
+  if (item.value === "first_last_frame") {
+    delete item.disabled;
+  }
+});
+
+const disabledShotInputModes = new Set(["reference_video", "reference_audio"]);
 
 const healthTextMap = {
   checking: "检测中",
@@ -439,13 +449,13 @@ function startShotEdit(item) {
   const media = item.media || {};
   inlineEditing.shotId = item.id;
   inlineEditing.shotSceneId = item.scene_id || "";
-  inlineEditing.shotInputMode = media.mode || "reference_image";
+  inlineEditing.shotInputMode = normalizeShotInputMode(media.mode);
   inlineEditing.shotGenerateAudio = Boolean(media.generate_audio);
   inlineEditing.shotFirstFramePath = media.first_frame_path || "";
   inlineEditing.shotLastFramePath = media.last_frame_path || "";
   inlineEditing.shotReferenceImagesText = serializeMediaPaths(media.reference_image_paths);
-  inlineEditing.shotReferenceVideosText = serializeMediaPaths(media.reference_video_paths);
-  inlineEditing.shotReferenceAudiosText = serializeMediaPaths(media.reference_audio_paths);
+  inlineEditing.shotReferenceVideosText = "";
+  inlineEditing.shotReferenceAudiosText = "";
   inlineEditing.shotSize = item.visual?.shot_size || "medium";
   inlineEditing.shotMovement = item.visual?.camera_movement || "static";
   inlineEditing.shotDuration = item.visual?.duration_seconds || 5;
@@ -517,15 +527,106 @@ function serializeMediaPaths(values) {
   return Array.isArray(values) ? values.filter(Boolean).join("\n") : "";
 }
 
+function normalizeShotInputMode(value) {
+  return disabledShotInputModes.has(value) ? "reference_image" : value || "reference_image";
+}
+
+function appendMediaPaths(currentValue, nextPaths) {
+  return serializeMediaPaths([...new Set([...parseMediaPaths(currentValue), ...nextPaths.filter(Boolean)])]);
+}
+
+function getShotMediaEntries(source) {
+  const entries = [];
+  const firstFramePath = String(source.shotFirstFramePath || "").trim();
+  const lastFramePath = String(source.shotLastFramePath || "").trim();
+  const referenceImagePaths = parseMediaPaths(source.shotReferenceImagesText);
+
+  if (firstFramePath) {
+    entries.push({ key: `first-${firstFramePath}`, kind: "first_frame", label: "首帧", path: firstFramePath });
+  }
+  if (lastFramePath) {
+    entries.push({ key: `last-${lastFramePath}`, kind: "last_frame", label: "尾帧", path: lastFramePath });
+  }
+  referenceImagePaths.forEach((path, index) => {
+    entries.push({ key: `ref-${path}-${index}`, kind: "reference_image", label: `参考图 ${index + 1}`, path });
+  });
+
+  return entries;
+}
+
+function removeShotMediaEntry(source, kind, path = "") {
+  if (kind === "first_frame") {
+    source.shotFirstFramePath = "";
+    return;
+  }
+  if (kind === "last_frame") {
+    source.shotLastFramePath = "";
+    return;
+  }
+  if (kind === "reference_image") {
+    source.shotReferenceImagesText = serializeMediaPaths(
+      parseMediaPaths(source.shotReferenceImagesText).filter((item) => item !== path)
+    );
+  }
+}
+
+async function handleShotMediaUpload(source, target, event) {
+  const files = event?.target?.files ? Array.from(event.target.files) : [];
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
+    setError("请先选择分镜板");
+    if (event?.target) {
+      event.target.value = "";
+    }
+    return;
+  }
+  if (!files.length) {
+    return;
+  }
+
+  loading.shotMediaUpload = true;
+  try {
+    const shotId = source === inlineEditing ? inlineEditing.shotId || "" : "";
+    const payload = await uploadShotMediaImages(
+      state.selectedSeriesSlug,
+      state.selectedStoryboardId,
+      target,
+      files,
+      shotId
+    );
+    const uploadedPaths = (payload.items || []).map((item) => String(item.path || "").trim()).filter(Boolean);
+    if (!uploadedPaths.length) {
+      throw new Error("上传后未返回有效图片路径");
+    }
+
+    if (target === "first_frame") {
+      source.shotFirstFramePath = uploadedPaths[0];
+    } else if (target === "last_frame") {
+      source.shotLastFramePath = uploadedPaths[0];
+    } else if (target === "reference_images") {
+      source.shotReferenceImagesText = appendMediaPaths(source.shotReferenceImagesText, uploadedPaths);
+    }
+
+    setNotice("镜头图片已上传");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.shotMediaUpload = false;
+    if (event?.target) {
+      event.target.value = "";
+    }
+  }
+}
+
 function buildShotMediaPayload(source) {
+  const mode = normalizeShotInputMode(source.shotInputMode);
   return {
-    mode: source.shotInputMode || "reference_image",
+    mode,
     generate_audio: Boolean(source.shotGenerateAudio),
     first_frame_path: String(source.shotFirstFramePath || "").trim(),
     last_frame_path: String(source.shotLastFramePath || "").trim(),
     reference_image_paths: parseMediaPaths(source.shotReferenceImagesText),
-    reference_video_paths: parseMediaPaths(source.shotReferenceVideosText),
-    reference_audio_paths: parseMediaPaths(source.shotReferenceAudiosText)
+    reference_video_paths: [],
+    reference_audio_paths: []
   };
 }
 
@@ -2393,29 +2494,110 @@ onMounted(boot);
 
               <el-select v-model="forms.shotInputMode" class="field-select" placeholder="选择 Seedance 输入模式">
                 <el-option v-for="item in shotInputModeOptions" :key="item.value" :label="item.label"
-                  :value="item.value" />
+                  :value="item.value" :disabled="item.disabled" />
               </el-select>
 
               <el-checkbox v-model="forms.shotGenerateAudio">生成有声视频</el-checkbox>
 
+              <div class="shot-media-panel">
+                <div class="shot-media-header">
+                  <div>
+                    <strong>镜头素材</strong>
+                    <p class="upload-copy">首帧、尾帧和参考图统一走本地上传，上传后自动回填到镜头配置。</p>
+                  </div>
+                  <small>{{ getShotMediaEntries(forms).length }} 张图片 / 2 项已禁用</small>
+                </div>
+
+                <div class="shot-media-grid">
+                  <label class="shot-upload-tile">
+                    <span class="shot-upload-chip">首帧</span>
+                    <strong>上传首帧图</strong>
+                    <small>用于首帧图生视频</small>
+                    <input class="shot-upload-input" type="file" accept="image/*"
+                      @change="handleShotMediaUpload(forms, 'first_frame', $event)" />
+                  </label>
+
+                  <label class="shot-upload-tile">
+                    <span class="shot-upload-chip">尾帧</span>
+                    <strong>上传尾帧图</strong>
+                    <small>用于首尾帧过渡</small>
+                    <input class="shot-upload-input" type="file" accept="image/*"
+                      @change="handleShotMediaUpload(forms, 'last_frame', $event)" />
+                  </label>
+
+                  <label class="shot-upload-tile shot-upload-tile-wide">
+                    <span class="shot-upload-chip">参考图</span>
+                    <strong>上传补充参考图</strong>
+                    <small>可一次上传多张，补充主体、场景或构图信息</small>
+                    <input class="shot-upload-input" type="file" accept="image/*" multiple
+                      @change="handleShotMediaUpload(forms, 'reference_images', $event)" />
+                  </label>
+
+                  <div class="shot-disabled-tile">
+                    <span class="shot-upload-chip muted">视频参考</span>
+                    <strong>暂未启用</strong>
+                    <small>当前没有公网素材环境，暂时不支持视频参考。</small>
+                  </div>
+
+                  <div class="shot-disabled-tile">
+                    <span class="shot-upload-chip muted">音频参考</span>
+                    <strong>暂未启用</strong>
+                    <small>等公网环境就绪后，再恢复音频参考能力。</small>
+                  </div>
+                </div>
+
+                <div v-if="getShotMediaEntries(forms).length" class="reference-grid shot-media-preview-grid">
+                  <div v-for="image in getShotMediaEntries(forms)" :key="image.key" class="reference-card shot-media-card">
+                    <div class="reference-header">
+                      <strong>{{ image.label }}</strong>
+                      <small>{{ image.path }}</small>
+                    </div>
+                    <button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
+                      @click="removeShotMediaEntry(forms, image.kind, image.path)">
+                      移除
+                    </button>
+                    <el-image class="preview-image" :src="assetUrl(image.path)"
+                      :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
+                      preview-teleported />
+                  </div>
+                </div>
+              </div>
+
+              <template v-if="false">
               <div class="split-grid">
-                <el-input v-model="forms.shotFirstFramePath" class="field" type="text"
+                <input class="field file-input" type="file" accept="image/*" @change="handleShotMediaUpload(forms, 'first_frame', $event)"
                   placeholder="首帧图片路径或公网 URL（可选）" />
-                <el-input v-model="forms.shotLastFramePath" class="field" type="text"
+                <input class="field file-input" type="file" accept="image/*" @change="handleShotMediaUpload(forms, 'last_frame', $event)"
                   placeholder="尾帧图片路径或公网 URL（可选）" />
               </div>
 
-              <el-input v-model="forms.shotReferenceImagesText" class="field-textarea" type="textarea" resize="vertical"
+              <input class="field file-input" type="file" accept="image/*" multiple @change="handleShotMediaUpload(forms, 'reference_images', $event)"
                 :autosize="{ minRows: 2, maxRows: 5 }" placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
 
               <div class="split-grid">
-                <el-input v-model="forms.shotReferenceVideosText" class="field-textarea" type="textarea"
+                <div v-if="getShotMediaEntries(forms).length" class="reference-grid">
+                  <div v-for="image in getShotMediaEntries(forms)" :key="image.key" class="reference-card">
+                    <div class="reference-header">
+                      <strong>{{ image.label }}</strong>
+                      <small>{{ image.path }}</small>
+                    </div>
+                    <button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
+                      @click="removeShotMediaEntry(forms, image.kind, image.path)">
+                      移除
+                    </button>
+                    <el-image class="preview-image" :src="assetUrl(image.path)"
+                      :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
+                      preview-teleported />
+                  </div>
+                </div>
+                <el-input v-model="forms.shotReferenceVideosText" class="field-textarea" type="textarea" :disabled="true"
                   resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
                   placeholder="视频参考，一行一个公网 URL 或 asset://..." />
-                <el-input v-model="forms.shotReferenceAudiosText" class="field-textarea" type="textarea"
+                <el-input v-model="forms.shotReferenceAudiosText" class="field-textarea" type="textarea" :disabled="true"
                   resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
                   placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
               </div>
+              </template>
 
               <div class="split-grid">
                 <el-select v-model="forms.shotSize" class="field-select" placeholder="镜头景别">
@@ -2466,26 +2648,107 @@ onMounted(boot);
                     <el-select v-model="inlineEditing.shotInputMode" class="field-select"
                       placeholder="选择 Seedance 输入模式">
                       <el-option v-for="option in shotInputModeOptions" :key="option.value" :label="option.label"
-                        :value="option.value" />
+                        :value="option.value" :disabled="option.disabled" />
                     </el-select>
                     <el-checkbox v-model="inlineEditing.shotGenerateAudio">生成有声视频</el-checkbox>
+                    <div class="shot-media-panel inline-shot-media-panel">
+                      <div class="shot-media-header">
+                        <div>
+                          <strong>镜头素材</strong>
+                          <p class="upload-copy">在这里替换或追加首帧、尾帧和参考图，不影响其他镜头参数。</p>
+                        </div>
+                        <small>{{ getShotMediaEntries(inlineEditing).length }} 张图片 / 2 项已禁用</small>
+                      </div>
+
+                      <div class="shot-media-grid">
+                        <label class="shot-upload-tile">
+                          <span class="shot-upload-chip">首帧</span>
+                          <strong>替换首帧图</strong>
+                          <small>当前镜头的开场主体</small>
+                          <input class="shot-upload-input" type="file" accept="image/*"
+                            @change="handleShotMediaUpload(inlineEditing, 'first_frame', $event)" />
+                        </label>
+
+                        <label class="shot-upload-tile">
+                          <span class="shot-upload-chip">尾帧</span>
+                          <strong>替换尾帧图</strong>
+                          <small>用于首尾帧过渡</small>
+                          <input class="shot-upload-input" type="file" accept="image/*"
+                            @change="handleShotMediaUpload(inlineEditing, 'last_frame', $event)" />
+                        </label>
+
+                        <label class="shot-upload-tile shot-upload-tile-wide">
+                          <span class="shot-upload-chip">参考图</span>
+                          <strong>继续添加参考图</strong>
+                          <small>可以补充更多主体、场景或构图信息</small>
+                          <input class="shot-upload-input" type="file" accept="image/*" multiple
+                            @change="handleShotMediaUpload(inlineEditing, 'reference_images', $event)" />
+                        </label>
+
+                        <div class="shot-disabled-tile">
+                          <span class="shot-upload-chip muted">视频参考</span>
+                          <strong>暂未启用</strong>
+                          <small>当前没有公网素材环境，暂时不支持视频参考。</small>
+                        </div>
+
+                        <div class="shot-disabled-tile">
+                          <span class="shot-upload-chip muted">音频参考</span>
+                          <strong>暂未启用</strong>
+                          <small>等公网环境就绪后，再恢复音频参考能力。</small>
+                        </div>
+                      </div>
+
+                      <div v-if="getShotMediaEntries(inlineEditing).length" class="reference-grid shot-media-preview-grid">
+                        <div v-for="image in getShotMediaEntries(inlineEditing)" :key="image.key" class="reference-card shot-media-card">
+                          <div class="reference-header">
+                            <strong>{{ image.label }}</strong>
+                            <small>{{ image.path }}</small>
+                          </div>
+                          <button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
+                            @click="removeShotMediaEntry(inlineEditing, image.kind, image.path)">
+                            移除
+                          </button>
+                          <el-image class="preview-image" :src="assetUrl(image.path)"
+                            :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
+                            preview-teleported />
+                        </div>
+                      </div>
+                    </div>
+
+                    <template v-if="false">
                     <div class="split-grid">
-                      <el-input v-model="inlineEditing.shotFirstFramePath" class="field" type="text"
+                      <input class="field file-input" type="file" accept="image/*" @change="handleShotMediaUpload(inlineEditing, 'first_frame', $event)"
                         placeholder="首帧图片路径或公网 URL（可选）" />
-                      <el-input v-model="inlineEditing.shotLastFramePath" class="field" type="text"
+                      <input class="field file-input" type="file" accept="image/*" @change="handleShotMediaUpload(inlineEditing, 'last_frame', $event)"
                         placeholder="尾帧图片路径或公网 URL（可选）" />
                     </div>
-                    <el-input v-model="inlineEditing.shotReferenceImagesText" class="field-textarea" type="textarea"
+                    <input class="field file-input" type="file" accept="image/*" multiple @change="handleShotMediaUpload(inlineEditing, 'reference_images', $event)"
                       resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
                       placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
                     <div class="split-grid">
-                      <el-input v-model="inlineEditing.shotReferenceVideosText" class="field-textarea" type="textarea"
+                      <div v-if="getShotMediaEntries(inlineEditing).length" class="reference-grid">
+                        <div v-for="image in getShotMediaEntries(inlineEditing)" :key="image.key" class="reference-card">
+                          <div class="reference-header">
+                            <strong>{{ image.label }}</strong>
+                            <small>{{ image.path }}</small>
+                          </div>
+                          <button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
+                            @click="removeShotMediaEntry(inlineEditing, image.kind, image.path)">
+                            移除
+                          </button>
+                          <el-image class="preview-image" :src="assetUrl(image.path)"
+                            :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
+                            preview-teleported />
+                        </div>
+                      </div>
+                      <el-input v-model="inlineEditing.shotReferenceVideosText" class="field-textarea" type="textarea" :disabled="true"
                         resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
                         placeholder="视频参考，一行一个公网 URL 或 asset://..." />
-                      <el-input v-model="inlineEditing.shotReferenceAudiosText" class="field-textarea" type="textarea"
+                      <el-input v-model="inlineEditing.shotReferenceAudiosText" class="field-textarea" type="textarea" :disabled="true"
                         resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
                         placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
                     </div>
+                    </template>
                     <div class="split-grid">
                       <el-select v-model="inlineEditing.shotSize" class="field-select" placeholder="镜头景别">
                         <el-option v-for="option in shotSizeOptions" :key="option.value" :label="option.label"
@@ -3036,6 +3299,103 @@ h3 {
   cursor: pointer;
 }
 
+.shot-media-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(255, 189, 115, 0.12), transparent 28%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.inline-shot-media-panel {
+  padding: 14px;
+}
+
+.shot-media-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.shot-media-header strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.shot-media-header small {
+  color: rgba(237, 242, 247, 0.56);
+  white-space: nowrap;
+}
+
+.shot-media-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.shot-upload-tile,
+.shot-disabled-tile {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.shot-upload-tile {
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.shot-upload-tile:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 189, 115, 0.34);
+  background: rgba(255, 189, 115, 0.08);
+}
+
+.shot-upload-tile-wide {
+  grid-column: span 2;
+}
+
+.shot-upload-chip {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 189, 115, 0.16);
+  color: rgba(255, 228, 196, 0.92);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.shot-upload-chip.muted {
+  background: rgba(148, 163, 184, 0.14);
+  color: rgba(203, 213, 225, 0.82);
+}
+
+.shot-upload-input {
+  display: none;
+}
+
+.shot-disabled-tile {
+  opacity: 0.82;
+  border-style: dashed;
+}
+
+.shot-media-preview-grid {
+  gap: 12px;
+}
+
+.shot-media-card {
+  gap: 10px;
+}
+
 .field-select {
   width: 100%;
   min-width: 0;
@@ -3531,6 +3891,22 @@ h3 {
 
   .item-inline-field {
     min-width: 0;
+  }
+
+  .shot-media-header {
+    flex-direction: column;
+  }
+
+  .shot-media-header small {
+    white-space: normal;
+  }
+
+  .shot-media-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shot-upload-tile-wide {
+    grid-column: span 1;
   }
 }
 

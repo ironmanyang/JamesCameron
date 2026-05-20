@@ -291,6 +291,31 @@ export function assembleShotPackage(seriesSlug, storyboardId, shotId) {
   });
 }
 
+export async function uploadShotMediaImages(seriesSlug, storyboardId, target, files, shotId = "") {
+  const formData = new FormData();
+  formData.append("series_slug", seriesSlug);
+  formData.append("target", target);
+  if (shotId) {
+    formData.append("shot_id", shotId);
+  }
+  Array.from(files || []).forEach((file) => {
+    formData.append("files", file);
+  });
+
+  const response = await fetch(`/api/storyboards/${storyboardId}/shot-media-images`, {
+    method: "POST",
+    body: formData
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message = payload.detail || payload.message || `Request failed: ${response.status}`;
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
 export function createSnapshot(data) {
   return request("/api/snapshots", {
     method: "POST",

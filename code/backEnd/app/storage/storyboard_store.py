@@ -27,6 +27,18 @@ def get_shot_path(series_slug: str, storyboard_id: str, shot_id: str) -> Path:
     return get_shots_root(series_slug, storyboard_id) / f"{shot_id}.json"
 
 
+def get_storyboard_shot_media_root(series_slug: str, storyboard_id: str) -> Path:
+    return get_storyboard_dir(series_slug, storyboard_id) / "shot_media"
+
+
+def get_storyboard_draft_shot_media_dir(series_slug: str, storyboard_id: str) -> Path:
+    return get_storyboard_shot_media_root(series_slug, storyboard_id) / "_draft"
+
+
+def get_shot_media_uploads_dir(series_slug: str, storyboard_id: str, shot_id: str) -> Path:
+    return get_storyboard_shot_media_root(series_slug, storyboard_id) / shot_id
+
+
 def get_storyboard(series_slug: str, storyboard_id: str) -> dict | None:
     path = get_storyboard_manifest_path(series_slug, storyboard_id)
     if not path.exists():
