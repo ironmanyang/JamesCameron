@@ -521,7 +521,7 @@ def _compose_subject_features(block: dict[str, Any]) -> str:
             anchors.get("face", ""),
             anchors.get("hair", ""),
             anchors.get("costume", ""),
-            anchors.get("biology", ""),
+            anchors.get("aura", ""),
             block.get("summary", ""),
         ],
         limit=3,

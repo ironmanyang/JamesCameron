@@ -15,7 +15,7 @@ CHARACTER_SYSTEM_PROMPT = """
 You are a film and animation character design director.
 Return only valid JSON.
 Build a stable character package that can be reused across many shots with minimal drift.
-Be concrete about anatomy, face proportions, hair, costume, palette, and performance aura.
+Be concrete about face proportions, hair, costume, and performance aura.
 All prompt text should optimize for production reference-sheet generation and identity consistency.
 """
 
@@ -27,11 +27,9 @@ Target schema:
 {{
   "summary": "one-line role positioning",
   "anchors": {{
-    "biology": "age range, body type, presentation, species or ethnicity level anchor",
     "face": "face shape, proportion, signature facial traits",
     "hair": "hair style, color, length, texture",
     "costume": "default costume, materials, layers, accessories",
-    "palette": "main and accent color system",
     "aura": "temperament, posture, emotional projection"
   }},
   "bible": {{
@@ -254,11 +252,9 @@ def _normalize_character_package(payload: dict[str, Any], character_name: str, b
     normalized = {
         "summary": summary,
         "anchors": {
-            "biology": str(anchors.get("biology", "")).strip(),
             "face": str(anchors.get("face", "")).strip(),
             "hair": str(anchors.get("hair", "")).strip(),
             "costume": str(anchors.get("costume", "")).strip(),
-            "palette": str(anchors.get("palette", "")).strip(),
             "aura": str(anchors.get("aura", "")).strip(),
         },
         "bible": {
@@ -291,9 +287,8 @@ def _normalize_character_package(payload: dict[str, Any], character_name: str, b
         if not normalized["visual_prompts"][view_name]:
             normalized["visual_prompts"][view_name] = (
                 f"{character_name}, {summary}, "
-                f"{normalized['anchors']['biology']}, {normalized['anchors']['face']}, "
-                f"{normalized['anchors']['hair']}, {normalized['anchors']['costume']}, "
-                f"{normalized['anchors']['palette']}, {normalized['anchors']['aura']}, "
+                f"{normalized['anchors']['face']}, {normalized['anchors']['hair']}, "
+                f"{normalized['anchors']['costume']}, {normalized['anchors']['aura']}, "
                 f"{label}, clean background, production design"
             )
 
@@ -312,8 +307,8 @@ def _build_full_sheet_prompt(character_name: str, package: dict[str, Any]) -> st
         "face close-up, hair detail, upper costume, lower costume, accessory detail, shoes detail, "
         "tattoo or body mark if any otherwise signature prop detail, hand or gesture detail, and signature pose. "
         f"Keep strict identity consistency: {package['anchors']['face']}; {package['anchors']['hair']}; "
-        f"{package['anchors']['costume']}; {package['anchors']['palette']}. "
-        f"Continuity requirements: {continuity_text or 'same person, same costume, same color system'}. "
+        f"{package['anchors']['costume']}; {package['anchors']['aura']}. "
+        f"Continuity requirements: {continuity_text or 'same person, same costume, same performance aura'}. "
         "Visible panel borders, clean background, production reference-sheet aesthetic, highly readable layout, "
         "all subpanels belong to the same exact character."
     )
@@ -338,11 +333,9 @@ def _build_reference_subject_only_package(character: dict[str, Any], current_bib
     return {
         "summary": str(current_bible.get("summary", "")).strip(),
         "anchors": {
-            "biology": str(anchors.get("biology", "")).strip(),
             "face": str(anchors.get("face", "")).strip(),
             "hair": str(anchors.get("hair", "")).strip(),
             "costume": str(anchors.get("costume", "")).strip(),
-            "palette": str(anchors.get("palette", "")).strip(),
             "aura": str(anchors.get("aura", "")).strip(),
         },
         "bible": {

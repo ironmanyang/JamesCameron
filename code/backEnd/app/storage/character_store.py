@@ -95,11 +95,9 @@ def create_character(series_slug: str, name: str, brief: str = "") -> dict:
         "updated_at": now,
         "status": "draft",
         "anchors": {
-            "biology": "",
             "face": "",
             "hair": "",
             "costume": "",
-            "palette": "",
             "aura": "",
         },
         "brief": brief,
@@ -186,11 +184,9 @@ def save_character_assets(
     versions_dir = get_character_dir(series_slug, character_id) / "versions"
 
     manifest["anchors"] = {
-        "biology": anchors.get("biology", ""),
         "face": anchors.get("face", ""),
         "hair": anchors.get("hair", ""),
         "costume": anchors.get("costume", ""),
-        "palette": anchors.get("palette", ""),
         "aura": anchors.get("aura", ""),
     }
     manifest["reference_images"] = {

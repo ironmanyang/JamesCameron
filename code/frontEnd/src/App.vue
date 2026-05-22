@@ -178,6 +178,26 @@ const inlineEditing = reactive({
   shotStoryRawExcerpt: ""
 });
 
+const parsedShotEditing = reactive({
+  sceneIndex: -1,
+  shotIndex: -1,
+  description: "",
+  cameraAngle: "",
+  cameraMovement: "",
+  cameraShotSize: "",
+  charactersText: "",
+  dialoguesText: "",
+  emotion: "",
+  beat: ""
+});
+
+const parsedSceneEditing = reactive({
+  sceneIndex: -1,
+  location: "",
+  time: "",
+  summary: ""
+});
+
 const shotSizeOptions = [
   { value: "wide", label: "远景" },
   { value: "medium", label: "中景" },
@@ -250,11 +270,9 @@ const entityStatusTextMap = {
 };
 
 const anchorLabelMap = {
-  biology: "生理锚点",
   face: "五官锚点",
   hair: "发型锚点",
   costume: "服装锚点",
-  palette: "色彩锚点",
   aura: "气质锚点"
 };
 
@@ -366,6 +384,10 @@ const selectedCharacterSourceEntries = computed(() =>
   }))
 );
 const hasUploadedCharacterSourceImages = computed(() => selectedCharacterSourceEntries.value.length > 0);
+const selectedCharacterAnchorEntries = computed(() =>
+  Object.entries(selectedCharacter.value?.anchors || {})
+    .filter(([key]) => ["face", "hair", "costume", "aura"].includes(key))
+);
 
 const selectedSceneImageEntries = computed(() => {
   const images = selectedScene.value?.reference_images || {};
@@ -1139,6 +1161,174 @@ function buildParsedShotDescription(scene, shot, sceneIndex, shotIndex) {
   }
 
   return lines.join("\n");
+}
+
+function serializeCharacterEntries(characters) {
+  return Array.isArray(characters)
+    ? characters
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .join("、")
+    : "";
+}
+
+function parseCharacterText(value) {
+  return String(value || "")
+    .split(/\r?\n|[，,、]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildParsedCameraSummary(camera) {
+  const source = camera || {};
+  const parts = [
+    source.angle ? `机位角度：${source.angle}` : "",
+    source.movement ? `运镜方式：${source.movement}` : "",
+    source.shot_size ? `景别：${source.shot_size}` : ""
+  ].filter(Boolean);
+  return parts.join("；");
+}
+
+function isEditingParsedShot(sceneIndex, shotIndex) {
+  return parsedShotEditing.sceneIndex === sceneIndex && parsedShotEditing.shotIndex === shotIndex;
+}
+
+function isEditingParsedScene(sceneIndex) {
+  return parsedSceneEditing.sceneIndex === sceneIndex;
+}
+
+function startParsedSceneEdit(scene, sceneIndex) {
+  parsedSceneEditing.sceneIndex = sceneIndex;
+  parsedSceneEditing.location = String(scene?.location || "").trim();
+  parsedSceneEditing.time = String(scene?.time || "").trim();
+  parsedSceneEditing.summary = String(scene?.summary || "").trim();
+}
+
+function cancelParsedSceneEdit() {
+  parsedSceneEditing.sceneIndex = -1;
+  parsedSceneEditing.location = "";
+  parsedSceneEditing.time = "";
+  parsedSceneEditing.summary = "";
+}
+
+function saveParsedSceneEdit(sceneIndex) {
+  if (!parsedScriptObject.value) {
+    setError("当前解析 JSON 无法编辑，请先修复结构。");
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(state.parsedScriptText || "{}");
+    const targetScene = Array.isArray(parsed?.scenes) ? parsed.scenes[sceneIndex] : null;
+    if (!targetScene) {
+      throw new Error("未找到要修改的场景。");
+    }
+
+    targetScene.location = String(parsedSceneEditing.location || "").trim();
+    targetScene.time = String(parsedSceneEditing.time || "").trim();
+    targetScene.summary = String(parsedSceneEditing.summary || "").trim();
+
+    const readable = {
+      ...((targetScene.readable && typeof targetScene.readable === "object") ? targetScene.readable : {})
+    };
+    readable["场景地点"] = targetScene.location;
+    readable["时间"] = targetScene.time;
+    readable["场景摘要"] = targetScene.summary;
+    readable["镜头数"] = Array.isArray(targetScene.shots) ? targetScene.shots.length : 0;
+    targetScene.readable = readable;
+
+    if (parsed.extracted_entities && Array.isArray(parsed.extracted_entities.scenes)) {
+      parsed.extracted_entities.scenes = [...new Set(
+        (parsed.scenes || [])
+          .map((scene) => String(scene?.location || "").trim())
+          .filter(Boolean)
+      )];
+    }
+
+    state.parsedScriptText = JSON.stringify(parsed, null, 2);
+    cancelParsedSceneEdit();
+    setNotice(`场景 ${sceneIndex + 1} 已更新到解析 JSON，请记得点击“保存 JSON”。`);
+  } catch (error) {
+    setError(error);
+  }
+}
+
+function startParsedShotEdit(scene, shot, sceneIndex, shotIndex) {
+  parsedShotEditing.sceneIndex = sceneIndex;
+  parsedShotEditing.shotIndex = shotIndex;
+  parsedShotEditing.description = String(shot?.description || "").trim();
+  parsedShotEditing.cameraAngle = String(shot?.camera?.angle || "").trim();
+  parsedShotEditing.cameraMovement = String(shot?.camera?.movement || "").trim();
+  parsedShotEditing.cameraShotSize = String(shot?.camera?.shot_size || "").trim();
+  parsedShotEditing.charactersText = serializeCharacterEntries(shot?.characters || []);
+  parsedShotEditing.dialoguesText = serializeDialogueEntries(getParsedShotDialogueEntries(shot));
+  parsedShotEditing.emotion = String(shot?.emotion || "").trim();
+  parsedShotEditing.beat = String(shot?.beat || "").trim();
+}
+
+function cancelParsedShotEdit() {
+  parsedShotEditing.sceneIndex = -1;
+  parsedShotEditing.shotIndex = -1;
+  parsedShotEditing.description = "";
+  parsedShotEditing.cameraAngle = "";
+  parsedShotEditing.cameraMovement = "";
+  parsedShotEditing.cameraShotSize = "";
+  parsedShotEditing.charactersText = "";
+  parsedShotEditing.dialoguesText = "";
+  parsedShotEditing.emotion = "";
+  parsedShotEditing.beat = "";
+}
+
+function saveParsedShotEdit(sceneIndex, shotIndex) {
+  if (!parsedScriptObject.value) {
+    setError("当前解析 JSON 无法编辑，请先修复结构。");
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(state.parsedScriptText || "{}");
+    const targetScene = Array.isArray(parsed?.scenes) ? parsed.scenes[sceneIndex] : null;
+    const targetShot = Array.isArray(targetScene?.shots) ? targetScene.shots[shotIndex] : null;
+    if (!targetScene || !targetShot) {
+      throw new Error("未找到要修改的分镜。");
+    }
+
+    const nextDialogues = parseDialogueText(parsedShotEditing.dialoguesText);
+    const nextCharacters = parseCharacterText(parsedShotEditing.charactersText);
+    const nextCamera = {
+      ...(targetShot.camera || {}),
+      angle: String(parsedShotEditing.cameraAngle || "").trim(),
+      movement: String(parsedShotEditing.cameraMovement || "").trim(),
+      shot_size: String(parsedShotEditing.cameraShotSize || "").trim(),
+      summary: ""
+    };
+
+    targetShot.description = String(parsedShotEditing.description || "").trim();
+    targetShot.camera = nextCamera;
+    targetShot.dialogues = nextDialogues;
+    targetShot.characters = nextCharacters;
+    targetShot.emotion = String(parsedShotEditing.emotion || "").trim();
+    targetShot.beat = String(parsedShotEditing.beat || "").trim();
+
+    const readable = {
+      ...((targetShot.readable && typeof targetShot.readable === "object") ? targetShot.readable : {})
+    };
+    readable["画面描述"] = targetShot.description;
+    readable["镜头信息"] = buildParsedCameraSummary(nextCamera);
+    readable["出场角色"] = serializeCharacterEntries(nextCharacters);
+    readable["对白"] = formatDialogueEntries(nextDialogues);
+    readable["情绪"] = targetShot.emotion;
+    readable["剧情节拍"] = targetShot.beat;
+    targetShot.readable = readable;
+
+    targetShot.camera.summary = buildParsedCameraSummary(nextCamera);
+
+    state.parsedScriptText = JSON.stringify(parsed, null, 2);
+    cancelParsedShotEdit();
+    setNotice(`镜头 ${shotIndex + 1} 已更新到解析 JSON，请记得点击“保存 JSON”。`);
+  } catch (error) {
+    setError(error);
+  }
 }
 
 function buildParsedShotStoryPayload(shot) {
@@ -3191,52 +3381,131 @@ onMounted(boot);
                 <div v-if="parsedScriptReadableScenes.length" class="form-stack">
                   <div v-for="(scene, sceneIndex) in parsedScriptReadableScenes"
                     :key="scene.scene_id || scene.readable?.['场景编号']" class="meta-panel">
-                    <div class="meta-row">
-                      <span>场景编号</span>
-                      <strong>{{ getReadableSceneInfo(scene)["场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
-                    </div>
-                    <div class="meta-row">
-                      <span>场景地点</span>
-                      <strong>{{ formatReadableField(getReadableSceneInfo(scene)["场景地点"] || scene.location) }}</strong>
-                    </div>
-                    <div class="meta-row">
-                      <span>时间</span>
-                      <strong>{{ formatReadableField(getReadableSceneInfo(scene)["时间"] || scene.time) }}</strong>
-                    </div>
-                    <div class="meta-row">
-                      <span>镜头数</span>
-                      <strong>{{ getReadableSceneInfo(scene)["镜头数"] ?? (scene.shots || []).length }}</strong>
-                    </div>
-                    <div class="meta-row meta-row-wide">
-                      <span>场景摘要</span>
-                      <strong>{{ formatReadableField(getReadableSceneInfo(scene)["场景摘要"] || scene.summary) }}</strong>
-                    </div>
+                    <template v-if="isEditingParsedScene(sceneIndex)">
+                      <div class="script-scene-editor" style="grid-column: 1 / -1; ">
+                        <div class="meta-row">
+                          <span>场景编号</span>
+                          <strong>{{ getReadableSceneInfo(scene)["场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
+                        </div>
+                        <div class="split-grid">
+                          <el-input v-model="parsedSceneEditing.location" class="field" type="text"
+                            placeholder="场景地点" />
+                          <el-input v-model="parsedSceneEditing.time" class="field" type="text" placeholder="时间" />
+                        </div>
+                        <div class="meta-row">
+                          <span>镜头数</span>
+                          <strong>{{ getReadableSceneInfo(scene)["镜头数"] ?? (scene.shots || []).length }}</strong>
+                        </div>
+                        <el-input v-model="parsedSceneEditing.summary" class="field-textarea compact" type="textarea"
+                          :autosize="{ minRows: 2, maxRows: 4 }" placeholder="场景摘要" />
+                        <div class="script-scene-actions">
+                          <el-button class="action-button dark compact-button"
+                            @click.stop="saveParsedSceneEdit(sceneIndex)">
+                            保存场景
+                          </el-button>
+                          <el-button class="action-button ghost compact-button" @click.stop="cancelParsedSceneEdit">
+                            取消
+                          </el-button>
+                        </div>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <div class="meta-row">
+                        <span>场景编号</span>
+                        <strong>{{ getReadableSceneInfo(scene)["场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
+                      </div>
+                      <div class="meta-row">
+                        <span>场景地点</span>
+                        <strong>{{ formatReadableField(getReadableSceneInfo(scene)["场景地点"] || scene.location) }}</strong>
+                      </div>
+                      <div class="meta-row">
+                        <span>时间</span>
+                        <strong>{{ formatReadableField(getReadableSceneInfo(scene)["时间"] || scene.time) }}</strong>
+                      </div>
+                      <div class="meta-row">
+                        <span>镜头数</span>
+                        <strong>{{ getReadableSceneInfo(scene)["镜头数"] ?? (scene.shots || []).length }}</strong>
+                      </div>
+                      <div class="meta-row meta-row-wide">
+                        <span>场景摘要</span>
+                        <strong>{{ formatReadableField(getReadableSceneInfo(scene)["场景摘要"] || scene.summary) }}</strong>
+                      </div>
+                      <div class="script-scene-actions">
+                        <el-button class="action-button ghost compact-button"
+                          @click.stop="startParsedSceneEdit(scene, sceneIndex)">
+                          修改场景
+                        </el-button>
+                      </div>
+                    </template>
 
                     <div v-if="(scene.shots || []).length" class="mini-list" style="grid-column: 1 / -1; ">
                       <div v-for="(shot, shotIndex) in scene.shots || []"
                         :key="`${scene.scene_id || 'scene'}-${shot.shot_id || getReadableShotInfo(shot)['镜头编号']}`"
                         class="mini-card">
                         <div class="item-body">
-                          <strong>镜头 {{ getReadableShotInfo(shot)["镜头编号"] ?? shot.shot_id ?? "?" }}</strong>
-                          <small>{{ formatReadableField(getReadableShotInfo(shot)["画面描述"] || shot.description) }}</small>
-                          <small>{{ formatReadableField(getReadableShotInfo(shot)["镜头信息"] || shot.camera?.summary || formatLegacyCameraSummary(shot.camera)) }}</small>
-                          <small>角色：{{ formatReadableField(getReadableShotInfo(shot)["出场角色"] || (shot.characters ||
-                            []).join("、")) }}</small>
-                          <small>对白：{{ formatReadableField(getReadableShotInfo(shot)["对白"] ||
-                            formatDialogueEntries(shot.dialogues)) }}</small>
-                          <small>情绪 / 节拍：{{ formatReadableField(getReadableShotInfo(shot)["情绪"] || shot.emotion) }} ·
-                            {{ formatReadableField(getReadableShotInfo(shot)["剧情节拍"] || shot.beat) }}</small>
-                          <div class="script-shot-actions">
-                            <el-button class="action-button ghost compact-button"
-                              @click.stop="handleCopyReadableShot(scene, shot, sceneIndex, shotIndex)">
-                              复制成分镜描述
-                            </el-button>
-                            <el-button class="action-button dark compact-button"
-                              :disabled="loading.importParsedShot || !state.selectedStoryboardId"
-                              @click.stop="handleImportReadableShot(scene, shot, sceneIndex, shotIndex)">
-                              {{ loading.importParsedShot ? "导入中..." : "导入为镜头卡草稿" }}
-                            </el-button>
-                          </div>
+                          <template v-if="isEditingParsedShot(sceneIndex, shotIndex)">
+                            <div class="script-shot-editor">
+                              <strong>镜头 {{ getReadableShotInfo(shot)["镜头编号"] ?? shot.shot_id ?? "?" }}</strong>
+                              <el-input v-model="parsedShotEditing.description" class="field-textarea compact"
+                                type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="画面描述" />
+                              <div class="split-grid">
+                                <el-input v-model="parsedShotEditing.cameraAngle" class="field" type="text"
+                                  placeholder="机位角度" />
+                                <el-input v-model="parsedShotEditing.cameraMovement" class="field" type="text"
+                                  placeholder="运镜方式" />
+                              </div>
+                              <el-input v-model="parsedShotEditing.cameraShotSize" class="field" type="text"
+                                placeholder="景别" />
+                              <el-input v-model="parsedShotEditing.charactersText" class="field" type="text"
+                                placeholder="角色，多个角色用 顿号 / 逗号 分隔" />
+                              <el-input v-model="parsedShotEditing.dialoguesText" class="field-textarea compact"
+                                type="textarea" :autosize="{ minRows: 2, maxRows: 5 }"
+                                placeholder="对白，一行一句，例如：乌萨奇: 小八小八，别睡啦！" />
+                              <div class="split-grid">
+                                <el-input v-model="parsedShotEditing.emotion" class="field" type="text"
+                                  placeholder="情绪" />
+                                <el-input v-model="parsedShotEditing.beat" class="field" type="text"
+                                  placeholder="剧情节拍" />
+                              </div>
+                              <div class="script-shot-actions">
+                                <el-button class="action-button dark compact-button"
+                                  @click.stop="saveParsedShotEdit(sceneIndex, shotIndex)">
+                                  保存修改
+                                </el-button>
+                                <el-button class="action-button ghost compact-button"
+                                  @click.stop="cancelParsedShotEdit">
+                                  取消
+                                </el-button>
+                                <el-button class="action-button dark compact-button"
+                                  :disabled="loading.importParsedShot || !state.selectedStoryboardId"
+                                  @click.stop="handleImportReadableShot(scene, shot, sceneIndex, shotIndex)">
+                                  {{ loading.importParsedShot ? "导入中..." : "导入为镜头卡草稿" }}
+                                </el-button>
+                              </div>
+                            </div>
+                          </template>
+                          <template v-else>
+                            <strong>镜头 {{ getReadableShotInfo(shot)["镜头编号"] ?? shot.shot_id ?? "?" }}</strong>
+                            <small>{{ formatReadableField(getReadableShotInfo(shot)["画面描述"] || shot.description) }}</small>
+                            <small>{{ formatReadableField(getReadableShotInfo(shot)["镜头信息"] || shot.camera?.summary || formatLegacyCameraSummary(shot.camera)) }}</small>
+                            <small>角色：{{ formatReadableField(getReadableShotInfo(shot)["出场角色"] || (shot.characters ||
+                              []).join("、")) }}</small>
+                            <small>对白：{{ formatReadableField(getReadableShotInfo(shot)["对白"] ||
+                              formatDialogueEntries(shot.dialogues)) }}</small>
+                            <small>情绪 / 节拍：{{ formatReadableField(getReadableShotInfo(shot)["情绪"] || shot.emotion) }} ·
+                              {{ formatReadableField(getReadableShotInfo(shot)["剧情节拍"] || shot.beat) }}</small>
+                            <div class="script-shot-actions">
+                              <el-button class="action-button ghost compact-button"
+                                @click.stop="startParsedShotEdit(scene, shot, sceneIndex, shotIndex)">
+                                修改分镜
+                              </el-button>
+                              <el-button class="action-button dark compact-button"
+                                :disabled="loading.importParsedShot || !state.selectedStoryboardId"
+                                @click.stop="handleImportReadableShot(scene, shot, sceneIndex, shotIndex)">
+                                {{ loading.importParsedShot ? "导入中..." : "导入为镜头卡草稿" }}
+                              </el-button>
+                            </div>
+                          </template>
                         </div>
                       </div>
                     </div>
@@ -3441,7 +3710,7 @@ onMounted(boot);
               </div>
 
               <div class="anchor-grid">
-                <article v-for="(value, key) in selectedCharacter.anchors" :key="key" class="anchor-card">
+                <article v-for="([key, value]) in selectedCharacterAnchorEntries" :key="key" class="anchor-card">
                   <span>{{ formatAnchorKey(key) }}</span>
                   <strong>{{ value || "待生成" }}</strong>
                 </article>
@@ -3711,31 +3980,16 @@ onMounted(boot);
                     <strong>剧情绑定</strong>
                     <small>镜头卡自身保存剧情描述、对白与原文摘录，镜头包组装优先使用这里。</small>
                   </div>
-                  <el-input
-                    v-model="forms.shotStoryDescription"
-                    class="field-textarea compact"
-                    type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 4 }"
-                    placeholder="剧情描述：这个镜头里具体拍什么"
-                  />
+                  <el-input v-model="forms.shotStoryDescription" class="field-textarea compact" type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 4 }" placeholder="剧情描述：这个镜头里具体拍什么" />
                   <div class="split-grid">
                     <el-input v-model="forms.shotStoryEmotion" class="field" type="text" placeholder="情绪基调" />
                     <el-input v-model="forms.shotStoryBeat" class="field" type="text" placeholder="剧情节拍 / 动作节点" />
                   </div>
-                  <el-input
-                    v-model="forms.shotStoryDialogue"
-                    class="field-textarea compact"
-                    type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 5 }"
-                    placeholder="对白，一行一句，例如：乌萨奇: 小八小八，别睡啦！"
-                  />
-                  <el-input
-                    v-model="forms.shotStoryRawExcerpt"
-                    class="field-textarea compact"
-                    type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 6 }"
-                    placeholder="剧本原文摘录，可直接粘贴当前镜头对应的原始剧本片段"
-                  />
+                  <el-input v-model="forms.shotStoryDialogue" class="field-textarea compact" type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 5 }" placeholder="对白，一行一句，例如：乌萨奇: 小八小八，别睡啦！" />
+                  <el-input v-model="forms.shotStoryRawExcerpt" class="field-textarea compact" type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 6 }" placeholder="剧本原文摘录，可直接粘贴当前镜头对应的原始剧本片段" />
                 </div>
 
                 <el-checkbox-group v-model="state.selectedCharacterIds" class="check-grid">
@@ -3881,31 +4135,20 @@ onMounted(boot);
                           <strong>剧情绑定</strong>
                           <small>这里的描述、对白、摘录会直接参与镜头包组装。</small>
                         </div>
-                        <el-input
-                          v-model="inlineEditing.shotStoryDescription"
-                          class="field-textarea compact"
-                          type="textarea"
-                          :autosize="{ minRows: 2, maxRows: 4 }"
-                          placeholder="剧情描述：这个镜头里具体拍什么"
-                        />
+                        <el-input v-model="inlineEditing.shotStoryDescription" class="field-textarea compact"
+                          type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="剧情描述：这个镜头里具体拍什么" />
                         <div class="split-grid">
-                          <el-input v-model="inlineEditing.shotStoryEmotion" class="field" type="text" placeholder="情绪基调" />
-                          <el-input v-model="inlineEditing.shotStoryBeat" class="field" type="text" placeholder="剧情节拍 / 动作节点" />
+                          <el-input v-model="inlineEditing.shotStoryEmotion" class="field" type="text"
+                            placeholder="情绪基调" />
+                          <el-input v-model="inlineEditing.shotStoryBeat" class="field" type="text"
+                            placeholder="剧情节拍 / 动作节点" />
                         </div>
-                        <el-input
-                          v-model="inlineEditing.shotStoryDialogue"
-                          class="field-textarea compact"
-                          type="textarea"
-                          :autosize="{ minRows: 2, maxRows: 5 }"
-                          placeholder="对白，一行一句，例如：乌萨奇: 小八小八，别睡啦！"
-                        />
-                        <el-input
-                          v-model="inlineEditing.shotStoryRawExcerpt"
-                          class="field-textarea compact"
-                          type="textarea"
-                          :autosize="{ minRows: 2, maxRows: 6 }"
-                          placeholder="剧本原文摘录，可直接粘贴当前镜头对应的原始剧本片段"
-                        />
+                        <el-input v-model="inlineEditing.shotStoryDialogue" class="field-textarea compact"
+                          type="textarea" :autosize="{ minRows: 2, maxRows: 5 }"
+                          placeholder="对白，一行一句，例如：乌萨奇: 小八小八，别睡啦！" />
+                        <el-input v-model="inlineEditing.shotStoryRawExcerpt" class="field-textarea compact"
+                          type="textarea" :autosize="{ minRows: 2, maxRows: 6 }"
+                          placeholder="剧本原文摘录，可直接粘贴当前镜头对应的原始剧本片段" />
                       </div>
                       <el-checkbox-group v-model="inlineEditing.shotCharacterIds" class="check-grid">
                         <el-checkbox v-for="character in state.characters" :key="character.id" :value="character.id"
@@ -3919,7 +4162,8 @@ onMounted(boot);
                     <strong>{{ item.id }}</strong>
                     <small>{{ getShotStoryDisplay(item, "description") }}</small>
                     <small>对白：{{ formatDialogueEntries(item.dialogue) || "暂无" }}</small>
-                    <small>情绪 / 节拍：{{ getShotStoryDisplay(item, "emotion") }} · {{ getShotStoryDisplay(item, "beat") }}</small>
+                    <small>情绪 / 节拍：{{ getShotStoryDisplay(item, "emotion") }} ·
+                      {{ getShotStoryDisplay(item, "beat") }}</small>
                     <span>{{ formatShotInputMode(item.media?.mode) }}</span>
                     <span>{{ formatShotAspectRatio(item.visual.aspect_ratio) }} ·
                       {{ formatShotResolution(item.visual.resolution) }}</span>
@@ -4624,7 +4868,8 @@ onMounted(boot);
 
 .masthead {
   display: grid;
-  grid-template-columns: 1.5fr minmax(320px, 380px);
+  grid-template-columns: 1.5fr minmax(420px,
+      480px);
   gap: var(--ui-gap);
   margin-bottom: var(--ui-gap);
   align-items: stretch;
@@ -5510,6 +5755,23 @@ h3 {
   min-height: 30px;
 }
 
+.script-scene-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.script-scene-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.script-scene-actions .action-button.el-button {
+  min-height: 30px;
+}
+
 .direct-beat-list {
   margin-top: 8px;
 }
@@ -5529,6 +5791,13 @@ h3 {
   display: grid;
   gap: 5px;
   min-width: 0;
+}
+
+.script-shot-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0;
 }
 
 .item-actions {
