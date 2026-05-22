@@ -96,6 +96,22 @@ def _extract_json_block(content: str) -> str:
     return content
 
 
+def _join_display(values: list[str], sep: str = "；") -> str:
+    return sep.join([str(item).strip() for item in values if str(item).strip()])
+
+
+def _dialogue_readable(dialogues: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for item in dialogues or []:
+        character = str(item.get("character", "")).strip()
+        text = str(item.get("text", "")).strip()
+        if character and text:
+            lines.append(f"{character}：{text}")
+        elif text:
+            lines.append(text)
+    return " / ".join(lines)
+
+
 def _normalize_parsed_script(payload: dict[str, Any], episode_id: str, episode_name: str) -> dict[str, Any]:
     title = payload.get("title") or episode_name
     acts = payload.get("acts") or []
@@ -129,22 +145,78 @@ def _normalize_parsed_script(payload: dict[str, Any], episode_id: str, episode_n
                 if speaker and speaker not in character_names:
                     character_names.append(speaker)
 
+            camera = shot.get("camera") or {}
+            angle = camera.get("angle", "")
+            movement = camera.get("movement", "")
+            shot_size = camera.get("shot_size", "")
+            description = shot.get("description", "")
+            emotion = shot.get("emotion", "")
+            beat = shot.get("beat", "")
+            dialogue_summary = _dialogue_readable(dialogues)
+
             normalized_shots.append(
                 {
                     "shot_id": shot.get("shot_id", shot_index),
-                    "description": shot.get("description", ""),
+                    "description": description,
                     "camera": {
-                        "angle": (shot.get("camera") or {}).get("angle", ""),
-                        "movement": (shot.get("camera") or {}).get("movement", ""),
-                        "shot_size": (shot.get("camera") or {}).get("shot_size", ""),
+                        "angle": angle,
+                        "movement": movement,
+                        "shot_size": shot_size,
+                        "readable": {
+                            "机位角度": angle,
+                            "运镜方式": movement,
+                            "景别": shot_size,
+                        },
+                        "summary": "；".join(
+                            [
+                                item
+                                for item in [
+                                    angle and f"机位角度：{angle}",
+                                    movement and f"运镜方式：{movement}",
+                                    shot_size and f"景别：{shot_size}",
+                                ]
+                                if item
+                            ]
+                        ),
                     },
                     "dialogues": dialogues,
                     "characters": shot_characters,
-                    "emotion": shot.get("emotion", ""),
-                    "beat": shot.get("beat", ""),
+                    "emotion": emotion,
+                    "beat": beat,
+                    "readable": {
+                        "镜头编号": shot.get("shot_id", shot_index),
+                        "画面描述": description,
+                        "镜头信息": _join_display(
+                            [
+                                angle and f"机位角度：{angle}",
+                                movement and f"运镜方式：{movement}",
+                                shot_size and f"景别：{shot_size}",
+                            ]
+                        ),
+                        "出场角色": "、".join(shot_characters),
+                        "对白": dialogue_summary,
+                        "情绪": emotion,
+                        "剧情节拍": beat,
+                    },
+                    "summary": _join_display(
+                        [
+                            description and f"画面：{description}",
+                            shot_characters and f"角色：{'、'.join(shot_characters)}",
+                            dialogue_summary and f"对白：{dialogue_summary}",
+                            emotion and f"情绪：{emotion}",
+                            beat and f"节拍：{beat}",
+                        ]
+                    ),
                 }
             )
 
+        scene_readable_shots = [
+            {
+                "镜头编号": shot.get("shot_id", ""),
+                "一句话": shot.get("summary", ""),
+            }
+            for shot in normalized_shots
+        ]
         normalized_scenes.append(
             {
                 "scene_id": scene.get("scene_id", scene_index),
@@ -152,8 +224,27 @@ def _normalize_parsed_script(payload: dict[str, Any], episode_id: str, episode_n
                 "time": time,
                 "summary": summary,
                 "shots": normalized_shots,
+                "readable": {
+                    "场景编号": scene.get("scene_id", scene_index),
+                    "场景地点": location,
+                    "时间": time,
+                    "场景摘要": summary,
+                    "镜头数": len(normalized_shots),
+                    "镜头导读": scene_readable_shots,
+                },
             }
         )
+
+    readable_outline = [
+        {
+            "场景编号": scene.get("scene_id", ""),
+            "场景地点": scene.get("location", ""),
+            "时间": scene.get("time", ""),
+            "场景摘要": scene.get("summary", ""),
+            "镜头数": len(scene.get("shots") or []),
+        }
+        for scene in normalized_scenes
+    ]
 
     return {
         "episode_id": episode_id,
@@ -164,6 +255,17 @@ def _normalize_parsed_script(payload: dict[str, Any], episode_id: str, episode_n
             "characters": extracted.get("characters") or character_names,
             "scenes": extracted.get("scenes") or scene_names,
             "props": props,
+            "readable": {
+                "角色": extracted.get("characters") or character_names,
+                "场景": extracted.get("scenes") or scene_names,
+                "道具": props,
+            },
+        },
+        "readable_outline": {
+            "剧集标题": title,
+            "场景总数": len(normalized_scenes),
+            "角色总览": extracted.get("characters") or character_names,
+            "场景导读": readable_outline,
         },
     }
 
@@ -173,8 +275,8 @@ def analyze_script_with_deepseek(raw_text: str, episode_id: str, episode_name: s
     if not api_key:
         raise ValueError("缺少 DEEPSEEK_API_KEY 配置")
 
-    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
-    model = os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-chat")
+    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://www.packyapi.com/v1").rstrip("/")
+    model = os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-v4-pro")
 
     response = requests.post(
         f"{base_url}/chat/completions",

@@ -4,9 +4,11 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import {
   analyzeEpisodeScript,
   assembleShotPackage,
+  assembleScenePackage,
   createCharacter,
   createEpisode,
   createScene,
+  createSceneDirectSnapshot,
   createSeries,
   createShot,
   createSnapshot,
@@ -16,6 +18,7 @@ import {
   deleteCharacterSourceImage,
   deleteEpisode,
   deleteJob,
+  deleteSnapshot,
   deleteScene,
   deleteSeries,
   deleteShot,
@@ -31,6 +34,7 @@ import {
   getScenePromptPackage,
   listCharacters,
   listEpisodes,
+  listSnapshots,
   listJobs,
   listScenes,
   listSeries,
@@ -43,6 +47,7 @@ import {
   updateCharacter,
   updateEpisode,
   updateScene,
+  updateStoryboard,
   updateShot,
   updateSeries,
   uploadCharacterSourceImages,
@@ -52,6 +57,7 @@ import {
 const health = ref("checking");
 const characterSourceFiles = ref([]);
 const characterSourceInput = ref(null);
+const parsedScriptViewMode = ref("readable");
 let episodeScriptsRequestSeed = 0;
 let productionRequestSeed = 0;
 let shotsRequestSeed = 0;
@@ -83,6 +89,7 @@ const loading = reactive({
   updateScene: false,
   deleteScene: false,
   createStoryboard: false,
+  updateStoryboard: false,
   createShot: false,
   updateShot: false,
   deleteShot: false,
@@ -96,9 +103,13 @@ const loading = reactive({
   sceneAssets: false,
   scenePackage: false,
   shotPackage: false,
+  sceneDirectPackage: false,
+  importParsedShot: false,
   jobDetail: false,
   snapshotDetail: false,
   deleteJob: false,
+  deleteSnapshot: false,
+  createSceneDirectTask: false,
   submitJob: false,
   refreshJob: false
 });
@@ -114,16 +125,22 @@ const forms = reactive({
   shotSceneId: "",
   shotInputMode: "reference_image",
   shotGenerateAudio: false,
+  shotAspectRatio: "16:9",
+  shotResolution: "1080p",
+  shotGenerationCount: 1,
   shotFirstFramePath: "",
   shotLastFramePath: "",
   shotReferenceImagesText: "",
-  shotReferenceVideosText: "",
-  shotReferenceAudiosText: "",
   shotSize: "medium",
   shotMovement: "static",
   shotDuration: 5,
   shotPalette: "",
-  shotLighting: ""
+  shotLighting: "",
+  shotStoryDescription: "",
+  shotStoryEmotion: "",
+  shotStoryBeat: "",
+  shotStoryDialogue: "",
+  shotStoryRawExcerpt: ""
 });
 
 const inlineEditing = reactive({
@@ -142,17 +159,23 @@ const inlineEditing = reactive({
   shotSceneId: "",
   shotInputMode: "reference_image",
   shotGenerateAudio: false,
+  shotAspectRatio: "16:9",
+  shotResolution: "1080p",
+  shotGenerationCount: 1,
   shotFirstFramePath: "",
   shotLastFramePath: "",
   shotReferenceImagesText: "",
-  shotReferenceVideosText: "",
-  shotReferenceAudiosText: "",
   shotSize: "medium",
   shotMovement: "static",
   shotDuration: 5,
   shotLighting: "",
   shotPalette: "",
-  shotCharacterIds: []
+  shotCharacterIds: [],
+  shotStoryDescription: "",
+  shotStoryEmotion: "",
+  shotStoryBeat: "",
+  shotStoryDialogue: "",
+  shotStoryRawExcerpt: ""
 });
 
 const shotSizeOptions = [
@@ -171,22 +194,40 @@ const shotMovementOptions = [
 ];
 
 const shotInputModeOptions = [
-  { value: "reference_image", label: "图片参考" },
-  { value: "first_frame", label: "首帧图生视频" },
-  { value: "first_last_frame", label: "首尾帧图生视频", disabled: true },
-  { value: "reference_video", label: "视频参考", disabled: true },
-  { value: "reference_audio", label: "音频参考", disabled: true },
-  { value: "multimodal_reference", label: "多模态参考" },
+  { value: "reference_image", label: "参考生成" },
+  { value: "first_last_frame", label: "首尾帧生成" },
   { value: "text_only", label: "纯文本" }
 ];
 
-shotInputModeOptions.forEach((item) => {
-  if (item.value === "first_last_frame") {
-    delete item.disabled;
-  }
-});
+const supportedShotInputModes = new Set(shotInputModeOptions.map((item) => item.value));
 
-const disabledShotInputModes = new Set(["reference_video", "reference_audio"]);
+const shotAspectRatioOptions = [
+  { value: "21:9", label: "21:9" },
+  { value: "1:1", label: "1:1" },
+  { value: "16:9", label: "16:9" },
+  { value: "3:4", label: "3:4" },
+  { value: "4:3", label: "4:3" },
+  { value: "9:16", label: "9:16" },
+  { value: "adaptive", label: "智能比例" }
+];
+
+const shotResolutionOptions = [
+  { value: "480p", label: "480p" },
+  { value: "720p", label: "720p" },
+  { value: "1080p", label: "1080p" }
+];
+
+const shotGenerationCountOptions = [
+  { value: 1, label: "1 条" },
+  { value: 2, label: "2 条" },
+  { value: 3, label: "3 条" },
+  { value: 4, label: "4 条" }
+];
+
+const storyboardProductionModeOptions = [
+  { value: "shot_pipeline", label: "分镜生产" },
+  { value: "scene_direct", label: "场景直出" }
+];
 
 const healthTextMap = {
   checking: "检测中",
@@ -226,6 +267,7 @@ const state = reactive({
   scenes: [],
   storyboards: [],
   shots: [],
+  snapshots: [],
   jobs: [],
   selectedSeriesSlug: "",
   selectedEpisodeId: "",
@@ -234,6 +276,7 @@ const state = reactive({
   selectedCharacterId: "",
   selectedSceneId: "",
   selectedJobId: "",
+  selectedSnapshotId: "",
   selectedCharacterIds: [],
   rawScript: "",
   parsedScriptText: "",
@@ -245,6 +288,7 @@ const state = reactive({
     characters: 0,
     scenes: 0,
     storyboards: 0,
+    snapshots: 0,
     jobs: 0
   }
 });
@@ -274,6 +318,10 @@ const filteredStoryboards = computed(() =>
 const selectedStoryboard = computed(
   () => filteredStoryboards.value.find((item) => item.id === state.selectedStoryboardId) || null
 );
+const selectedStoryboardProductionMode = computed(() =>
+  normalizeStoryboardProductionMode(selectedStoryboard.value?.production_mode)
+);
+const selectedSceneDirectPackage = computed(() => selectedStoryboard.value?.scene_direct_package || null);
 const selectedShot = computed(() => state.shots.find((item) => item.id === state.selectedShotId) || null);
 const selectedJobComputed = computed(() => {
   if (state.selectedJob && state.selectedJob.id === state.selectedJobId) {
@@ -282,9 +330,18 @@ const selectedJobComputed = computed(() => {
   return state.jobs.find((item) => item.id === state.selectedJobId) || null;
 });
 const selectedShotPromptPackage = computed(() => selectedShot.value?.prompt_package || null);
-const selectedJobRequestText = computed(() =>
-  JSON.stringify(selectedJobComputed.value?.provider?.request_body || {}, null, 2)
-);
+const parsedScriptObject = computed(() => {
+  try {
+    return JSON.parse(state.parsedScriptText || "{}");
+  } catch {
+    return null;
+  }
+});
+const parsedScriptReadableOutline = computed(() => parsedScriptObject.value?.readable_outline || null);
+const parsedScriptReadableScenes = computed(() => parsedScriptObject.value?.scenes || []);
+const selectedJobRequestBody = computed(() => normalizeSeedanceRequestBodyForDisplay(selectedJobComputed.value));
+const selectedJobRequestSummary = computed(() => buildSeedanceRequestSummary(selectedJobRequestBody.value));
+const selectedJobRequestText = computed(() => JSON.stringify(selectedJobRequestBody.value, null, 2));
 const selectedJobResponseText = computed(() =>
   JSON.stringify(selectedJobComputed.value?.remote?.raw_response || {}, null, 2)
 );
@@ -292,12 +349,6 @@ const selectedJobVideoUrl = computed(() => assetUrl(selectedJobComputed.value?.r
 const selectedJobCoverUrl = computed(() => assetUrl(selectedJobComputed.value?.result?.cover_path || ""));
 const selectedSnapshotImageCount = computed(
   () => state.selectedSnapshot?.resolved_assets?.images?.length || 0
-);
-const selectedSnapshotVideoCount = computed(
-  () => state.selectedSnapshot?.resolved_assets?.videos?.length || 0
-);
-const selectedSnapshotAudioCount = computed(
-  () => state.selectedSnapshot?.resolved_assets?.audio?.length || 0
 );
 
 const selectedCharacterImageEntries = computed(() => {
@@ -447,21 +498,29 @@ function cancelSceneEdit() {
 
 function startShotEdit(item) {
   const media = item.media || {};
+  const visual = item.visual || {};
+  const story = item.story || {};
   inlineEditing.shotId = item.id;
   inlineEditing.shotSceneId = item.scene_id || "";
   inlineEditing.shotInputMode = normalizeShotInputMode(media.mode);
   inlineEditing.shotGenerateAudio = Boolean(media.generate_audio);
+  inlineEditing.shotAspectRatio = visual.aspect_ratio || "16:9";
+  inlineEditing.shotResolution = visual.resolution || "1080p";
+  inlineEditing.shotGenerationCount = Number(visual.generation_count) || 1;
   inlineEditing.shotFirstFramePath = media.first_frame_path || "";
   inlineEditing.shotLastFramePath = media.last_frame_path || "";
   inlineEditing.shotReferenceImagesText = serializeMediaPaths(media.reference_image_paths);
-  inlineEditing.shotReferenceVideosText = "";
-  inlineEditing.shotReferenceAudiosText = "";
   inlineEditing.shotSize = item.visual?.shot_size || "medium";
   inlineEditing.shotMovement = item.visual?.camera_movement || "static";
   inlineEditing.shotDuration = item.visual?.duration_seconds || 5;
   inlineEditing.shotLighting = item.visual?.lighting || "";
   inlineEditing.shotPalette = item.visual?.palette || "";
   inlineEditing.shotCharacterIds = [...(item.characters || [])];
+  inlineEditing.shotStoryDescription = story.description || "";
+  inlineEditing.shotStoryEmotion = story.emotion || "";
+  inlineEditing.shotStoryBeat = story.beat || "";
+  inlineEditing.shotStoryDialogue = serializeDialogueEntries(item.dialogue || []);
+  inlineEditing.shotStoryRawExcerpt = story.raw_script_excerpt || "";
   state.selectedShotId = item.id;
 }
 
@@ -470,17 +529,23 @@ function cancelShotEdit() {
   inlineEditing.shotSceneId = "";
   inlineEditing.shotInputMode = "reference_image";
   inlineEditing.shotGenerateAudio = false;
+  inlineEditing.shotAspectRatio = "16:9";
+  inlineEditing.shotResolution = "1080p";
+  inlineEditing.shotGenerationCount = 1;
   inlineEditing.shotFirstFramePath = "";
   inlineEditing.shotLastFramePath = "";
   inlineEditing.shotReferenceImagesText = "";
-  inlineEditing.shotReferenceVideosText = "";
-  inlineEditing.shotReferenceAudiosText = "";
   inlineEditing.shotSize = "medium";
   inlineEditing.shotMovement = "static";
   inlineEditing.shotDuration = 5;
   inlineEditing.shotLighting = "";
   inlineEditing.shotPalette = "";
   inlineEditing.shotCharacterIds = [];
+  inlineEditing.shotStoryDescription = "";
+  inlineEditing.shotStoryEmotion = "";
+  inlineEditing.shotStoryBeat = "";
+  inlineEditing.shotStoryDialogue = "";
+  inlineEditing.shotStoryRawExcerpt = "";
 }
 
 function syncAssetCounts() {
@@ -488,6 +553,7 @@ function syncAssetCounts() {
     characters: state.characters.length,
     scenes: state.scenes.length,
     storyboards: state.storyboards.length,
+    snapshots: state.snapshots.length,
     jobs: state.jobs.length
   };
 }
@@ -516,6 +582,33 @@ function formatShotInputMode(value) {
   return shotInputModeOptions.find((item) => item.value === value)?.label || value || "未设置";
 }
 
+function normalizeStoryboardProductionMode(value) {
+  return storyboardProductionModeOptions.some((item) => item.value === value) ? value : "shot_pipeline";
+}
+
+function formatStoryboardProductionMode(value) {
+  return (
+    storyboardProductionModeOptions.find((item) => item.value === normalizeStoryboardProductionMode(value))?.label ||
+    "分镜生产"
+  );
+}
+
+function formatSnapshotSource(snapshot) {
+  const source = snapshot || {};
+  if (source.scene_id && !source.shot_id) {
+    return `${source.storyboard_id || "未绑定分镜板"} · ${source.scene_id}`;
+  }
+  return `${source.storyboard_id || "未绑定分镜板"} · ${source.shot_id || "scene_direct"}`;
+}
+
+function formatShotAspectRatio(value) {
+  return shotAspectRatioOptions.find((item) => item.value === value)?.label || value || "未设置";
+}
+
+function formatShotResolution(value) {
+  return shotResolutionOptions.find((item) => item.value === value)?.label || value || "未设置";
+}
+
 function parseMediaPaths(value) {
   return String(value || "")
     .split(/\r?\n/)
@@ -528,7 +621,63 @@ function serializeMediaPaths(values) {
 }
 
 function normalizeShotInputMode(value) {
-  return disabledShotInputModes.has(value) ? "reference_image" : value || "reference_image";
+  return supportedShotInputModes.has(value) ? value : "reference_image";
+}
+
+function isReferenceMode(value) {
+  return normalizeShotInputMode(value) === "reference_image";
+}
+
+function isFirstLastFrameMode(value) {
+  return normalizeShotInputMode(value) === "first_last_frame";
+}
+
+function isTextOnlyMode(value) {
+  return normalizeShotInputMode(value) === "text_only";
+}
+
+function normalizeShotDuration(value) {
+  return Math.max(1, Math.min(15, Number(value) || 5));
+}
+
+function normalizeShotGenerationCount(value) {
+  return Math.max(1, Math.min(4, Number(value) || 1));
+}
+
+function getAutoReferenceSummary(characterIds, sceneId) {
+  const normalizedCharacterIds = (characterIds || []).filter(Boolean);
+  const characterCount = normalizedCharacterIds.length;
+  const sceneCount = sceneId ? 1 : 0;
+  const totalCount = characterCount + sceneCount;
+  const characterNames = normalizedCharacterIds
+    .map((characterId) => state.characters.find((item) => item.id === characterId)?.name || characterId)
+    .filter(Boolean);
+  const sceneName = state.scenes.find((item) => item.id === sceneId)?.name || sceneId || "";
+
+  return {
+    totalCount,
+    characterCount,
+    sceneCount,
+    characterNames,
+    sceneName
+  };
+}
+
+function applyShotModeRules(source) {
+  const mode = normalizeShotInputMode(source.shotInputMode);
+  source.shotInputMode = mode;
+  if (mode !== "first_last_frame") {
+    source.shotFirstFramePath = "";
+    source.shotLastFramePath = "";
+  }
+  source.shotReferenceImagesText = "";
+}
+
+function validateShotSource(source) {
+  const mode = normalizeShotInputMode(source.shotInputMode);
+  if (mode === "first_last_frame" && !String(source.shotFirstFramePath || "").trim()) {
+    throw new Error("首尾帧生成模式下必须上传首帧图");
+  }
 }
 
 function appendMediaPaths(currentValue, nextPaths) {
@@ -619,14 +768,22 @@ async function handleShotMediaUpload(source, target, event) {
 
 function buildShotMediaPayload(source) {
   const mode = normalizeShotInputMode(source.shotInputMode);
+  const generateAudio = Boolean(source.shotGenerateAudio);
+  if (mode === "text_only" || mode === "reference_image") {
+    return {
+      mode,
+      generate_audio: generateAudio,
+      first_frame_path: "",
+      last_frame_path: "",
+      reference_image_paths: []
+    };
+  }
   return {
     mode,
-    generate_audio: Boolean(source.shotGenerateAudio),
+    generate_audio: generateAudio,
     first_frame_path: String(source.shotFirstFramePath || "").trim(),
     last_frame_path: String(source.shotLastFramePath || "").trim(),
-    reference_image_paths: parseMediaPaths(source.shotReferenceImagesText),
-    reference_video_paths: [],
-    reference_audio_paths: []
+    reference_image_paths: []
   };
 }
 
@@ -653,14 +810,629 @@ function formatProviderName(value) {
   return value;
 }
 
-function formatSubmitMode(value) {
-  if (!value || value === "manual") {
-    return "手动";
+function formatJobApiKind(provider) {
+  const apiKind = String(provider?.api_kind || "").trim();
+  if (apiKind === "ark_content_generation_tasks") {
+    return "Seedance Tasks API";
   }
-  if (value === "generic_http") {
-    return "通用 HTTP";
+  const submitMode = String(provider?.submit_mode || "").trim();
+  if (submitMode === "generic_http") {
+    return "Seedance Tasks API";
   }
-  return value;
+  if (!apiKind && !submitMode) {
+    return "未设置";
+  }
+  return apiKind || submitMode;
+}
+
+function inferSeedanceModeFromContent(content) {
+  const items = Array.isArray(content) ? content : [];
+  const imageItems = items.filter((item) => item?.type === "image_url");
+  if (!imageItems.length) {
+    return "text_only";
+  }
+  if (imageItems.some((item) => item?.role === "first_frame" || item?.role === "last_frame")) {
+    return "first_last_frame";
+  }
+  return "reference_image";
+}
+
+function formatSeedanceMode(value) {
+  if (value === "reference_image") {
+    return "参考生成";
+  }
+  if (value === "first_last_frame" || value === "first_frame") {
+    return "首尾帧生成";
+  }
+  if (value === "text_only") {
+    return "纯文字生成";
+  }
+  return value || "未识别";
+}
+
+function normalizeSeedanceRequestBodyForDisplay(job) {
+  const provider = job?.provider || {};
+  const requestBody = provider.request_body || {};
+  const rawContent = Array.isArray(requestBody.content) ? requestBody.content : [];
+
+  const textItem =
+    rawContent.find((item) => item?.type === "text" && String(item?.text || "").trim()) || null;
+  const imageItemsFromContent = rawContent
+    .filter((item) => item?.type === "image_url" && String(item?.image_url?.url || "").trim())
+    .map((item) => ({
+      type: "image_url",
+      image_url: {
+        url: item.image_url.url
+      },
+      ...(item.role ? { role: item.role } : {})
+    }));
+
+  const legacyImagePaths = Array.isArray(requestBody.reference_images)
+    ? requestBody.reference_images.filter((item) => String(item || "").trim())
+    : [];
+  const legacyMediaItems = Array.isArray(requestBody.media_references)
+    ? requestBody.media_references
+      .filter((item) => item?.type === "image" && String(item?.path || "").trim())
+      .map((item) => ({
+        type: "image_url",
+        image_url: {
+          url: item.path
+        },
+        ...(item.role ? { role: item.role } : {})
+      }))
+    : [];
+  const fallbackImageItems = (imageItemsFromContent.length ? imageItemsFromContent : legacyMediaItems.length ? legacyMediaItems : legacyImagePaths.map((path) => ({
+    type: "image_url",
+    image_url: {
+      url: path
+    }
+  })));
+
+  const normalizedContent = [];
+  if (textItem) {
+    normalizedContent.push({
+      type: "text",
+      text: textItem.text
+    });
+  } else if (String(requestBody.prompt || "").trim()) {
+    normalizedContent.push({
+      type: "text",
+      text: requestBody.prompt
+    });
+  }
+  normalizedContent.push(...fallbackImageItems);
+
+  const normalized = {
+    model: String(provider.model || requestBody.model || "doubao-seedance-2-0-260128").trim(),
+    content: normalizedContent,
+    ratio: String(requestBody.ratio || requestBody.aspect_ratio || "").trim(),
+    resolution: String(requestBody.resolution || "").trim(),
+    duration: Number(requestBody.duration ?? requestBody.duration_seconds ?? 0) || undefined,
+    count: Number(requestBody.count ?? requestBody.generation_count ?? 1) || 1,
+    generate_audio: Boolean(requestBody.generate_audio),
+    watermark: Boolean(requestBody.watermark)
+  };
+
+  if (requestBody.return_last_frame || inferSeedanceModeFromContent(normalizedContent) === "first_last_frame") {
+    normalized.return_last_frame = Boolean(requestBody.return_last_frame ?? true);
+  }
+
+  if (!normalized.ratio) {
+    delete normalized.ratio;
+  }
+  if (!normalized.resolution) {
+    delete normalized.resolution;
+  }
+  if (!normalized.duration) {
+    delete normalized.duration;
+  }
+
+  return normalized;
+}
+
+function buildSeedanceRequestSummary(requestBody) {
+  const content = Array.isArray(requestBody?.content) ? requestBody.content : [];
+  const imageItems = content.filter((item) => item?.type === "image_url");
+  const mode = inferSeedanceModeFromContent(content);
+  return {
+    mode,
+    modeLabel: formatSeedanceMode(mode),
+    imageCount: imageItems.length,
+    hasAudio: Boolean(requestBody?.generate_audio),
+    ratio: String(requestBody?.ratio || "").trim() || "未设置",
+    resolution: String(requestBody?.resolution || "").trim() || "未设置",
+    duration: Number(requestBody?.duration || 0) || 0,
+    count: Number(requestBody?.count || 1) || 1,
+    returnLastFrame: Boolean(requestBody?.return_last_frame)
+  };
+}
+
+function getJobSeedanceSummary(job) {
+  return buildSeedanceRequestSummary(normalizeSeedanceRequestBodyForDisplay(job));
+}
+
+function formatJobOutputSummary(job) {
+  const summary = getJobSeedanceSummary(job);
+  const durationText = summary.duration ? `${summary.duration} 秒` : "未设时长";
+  return `${durationText} · ${summary.count} 条 · ${summary.hasAudio ? "有声" : "无声"}`;
+}
+
+function formatJobReferenceSummary(job) {
+  const summary = getJobSeedanceSummary(job);
+  if (summary.mode === "reference_image") {
+    return `${summary.imageCount} 张参考图`;
+  }
+  if (summary.mode === "first_last_frame") {
+    return `${summary.imageCount} 张首尾帧`;
+  }
+  return "无图像参考";
+}
+
+function formatReadableField(value, fallback = "暂无") {
+  const normalized = String(value || "").trim();
+  return normalized || fallback;
+}
+
+function getReadableSceneInfo(scene) {
+  return scene?.readable || {};
+}
+
+function getReadableShotInfo(shot) {
+  return shot?.readable || {};
+}
+
+function normalizeDialogueEntries(dialogues) {
+  const items = Array.isArray(dialogues) ? dialogues : [];
+  return items
+    .map((item) => {
+      if (typeof item === "string") {
+        const raw = item.trim();
+        if (!raw) {
+          return null;
+        }
+        const parts = raw.split(/[:：]/, 2).map((part) => part.trim());
+        if (parts.length === 2) {
+          return { character: parts[0], text: parts[1] };
+        }
+        return { character: "", text: raw };
+      }
+      const character = String(item?.character || "").trim();
+      const text = String(item?.text || "").trim();
+      if (!character && !text) {
+        return null;
+      }
+      return { character, text };
+    })
+    .filter(Boolean);
+}
+
+function formatDialogueEntries(dialogues) {
+  return normalizeDialogueEntries(dialogues)
+    .map((item) => {
+      const character = String(item.character || "").trim();
+      const text = String(item.text || "").trim();
+      if (character && text) {
+        return `${character}: ${text}`;
+      }
+      return text;
+    })
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function serializeDialogueEntries(dialogues) {
+  return normalizeDialogueEntries(dialogues)
+    .map((item) => {
+      if (item.character && item.text) {
+        return `${item.character}: ${item.text}`;
+      }
+      return item.text;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function parseDialogueText(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(/[:：]/, 2).map((part) => part.trim());
+      if (parts.length === 2) {
+        return { character: parts[0], text: parts[1] };
+      }
+      return { character: "", text: line };
+    })
+    .filter((item) => item.character || item.text);
+}
+
+function buildShotStoryPayload(source) {
+  return {
+    description: String(source.shotStoryDescription || "").trim(),
+    emotion: String(source.shotStoryEmotion || "").trim(),
+    beat: String(source.shotStoryBeat || "").trim(),
+    raw_script_excerpt: String(source.shotStoryRawExcerpt || "").trim()
+  };
+}
+
+function buildShotDialoguePayload(source) {
+  return parseDialogueText(source.shotStoryDialogue);
+}
+
+function formatLegacyCameraSummary(camera) {
+  const source = camera || {};
+  const parts = [
+    source.angle ? `机位角度：${source.angle}` : "",
+    source.movement ? `运镜方式：${source.movement}` : "",
+    source.shot_size ? `景别：${source.shot_size}` : ""
+  ].filter(Boolean);
+  return parts.join("；");
+}
+
+function normalizeMatchText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[.,/#!$%^&*;:{}=\-_`~()"'?<>[\]\\|，。！？；：、“”‘’（）【】《》·]/g, "");
+}
+
+function firstNonEmptyText(...values) {
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function getParsedShotDialogueEntries(shot) {
+  return Array.isArray(shot?.dialogues)
+    ? shot.dialogues
+      .map((item) => ({
+        character: String(item?.character || "").trim(),
+        text: String(item?.text || "").trim()
+      }))
+      .filter((item) => item.character || item.text)
+    : [];
+}
+
+function buildParsedShotDescription(scene, shot, sceneIndex, shotIndex) {
+  const readableScene = getReadableSceneInfo(scene);
+  const readableShot = getReadableShotInfo(shot);
+  const sceneLocation = firstNonEmptyText(readableScene["场景地点"], scene?.location);
+  const sceneTime = firstNonEmptyText(readableScene["时间"], scene?.time);
+  const description = firstNonEmptyText(readableShot["画面描述"], shot?.description);
+  const cameraSummary = firstNonEmptyText(
+    readableShot["镜头信息"],
+    shot?.camera?.summary,
+    formatLegacyCameraSummary(shot?.camera)
+  );
+  const characterText = firstNonEmptyText(readableShot["出场角色"], (shot?.characters || []).join("、"));
+  const dialogueText = formatDialogueEntries(getParsedShotDialogueEntries(shot));
+  const emotionText = firstNonEmptyText(readableShot["情绪"], shot?.emotion);
+  const beatText = firstNonEmptyText(readableShot["剧情节拍"], shot?.beat);
+  const lines = [`场景 ${sceneIndex + 1} / 镜头 ${shotIndex + 1}`];
+
+  if (sceneLocation || sceneTime) {
+    lines.push(`场景：${[sceneLocation, sceneTime].filter(Boolean).join(" / ")}`);
+  }
+  if (description) {
+    lines.push(`画面：${description}`);
+  }
+  if (cameraSummary) {
+    lines.push(`镜头：${cameraSummary}`);
+  }
+  if (characterText) {
+    lines.push(`角色：${characterText}`);
+  }
+  if (dialogueText) {
+    lines.push(`对白：${dialogueText}`);
+  }
+  if (emotionText) {
+    lines.push(`情绪：${emotionText}`);
+  }
+  if (beatText) {
+    lines.push(`节拍：${beatText}`);
+  }
+
+  return lines.join("\n");
+}
+
+function buildParsedShotStoryPayload(shot) {
+  const readableShot = getReadableShotInfo(shot);
+  const description = firstNonEmptyText(readableShot["画面描述"], shot?.description);
+  const emotion = firstNonEmptyText(readableShot["情绪"], shot?.emotion);
+  const beat = firstNonEmptyText(readableShot["剧情节拍"], shot?.beat);
+  const dialogueLines = normalizeDialogueEntries(getParsedShotDialogueEntries(shot))
+    .map((item) => (item.character && item.text ? `${item.character}: ${item.text}` : item.text))
+    .filter(Boolean);
+  const rawScriptExcerpt = [description, ...dialogueLines].filter(Boolean).join("\n");
+
+  return {
+    description,
+    emotion,
+    beat,
+    raw_script_excerpt: rawScriptExcerpt
+  };
+}
+
+function getShotStoryValue(shot, fieldName) {
+  return String(shot?.story?.[fieldName] || "").trim();
+}
+
+function getShotStoryDisplay(shot, fieldName, fallback = "暂无") {
+  const storyValue = getShotStoryValue(shot, fieldName);
+  if (storyValue) {
+    return storyValue;
+  }
+  const scriptContext = shot?.prompt_package?.script_context || {};
+  const scriptFieldMap = {
+    description: "shot_description",
+    emotion: "shot_emotion",
+    beat: "shot_beat",
+    raw_script_excerpt: "raw_script_excerpt"
+  };
+  const scriptValue = String(scriptContext[scriptFieldMap[fieldName]] || "").trim();
+  return scriptValue || fallback;
+}
+
+async function copyTextToClipboard(text) {
+  const content = String(text || "").trim();
+  if (!content) {
+    throw new Error("没有可复制的内容");
+  }
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(content);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = content;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
+async function handleCopyReadableShot(scene, shot, sceneIndex, shotIndex) {
+  try {
+    await copyTextToClipboard(buildParsedShotDescription(scene, shot, sceneIndex, shotIndex));
+    setNotice(`镜头 ${shotIndex + 1} 的分镜描述已复制`);
+  } catch (error) {
+    setError(error);
+  }
+}
+
+function resolveParsedSceneId(scene) {
+  const readableScene = getReadableSceneInfo(scene);
+  const candidates = [
+    readableScene["场景地点"],
+    scene?.location,
+    readableScene["场景摘要"],
+    scene?.summary
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  const normalizedCandidates = candidates.map((item) => normalizeMatchText(item)).filter(Boolean);
+
+  if (!normalizedCandidates.length) {
+    return state.selectedSceneId || state.scenes[0]?.id || "";
+  }
+
+  const exactMatch = state.scenes.find((item) => {
+    const normalizedName = normalizeMatchText(item?.name);
+    return normalizedName && normalizedCandidates.includes(normalizedName);
+  });
+  if (exactMatch) {
+    return exactMatch.id;
+  }
+
+  const partialMatch = state.scenes.find((item) => {
+    const normalizedName = normalizeMatchText(item?.name);
+    return (
+      normalizedName &&
+      normalizedCandidates.some((candidate) => candidate.includes(normalizedName) || normalizedName.includes(candidate))
+    );
+  });
+  if (partialMatch) {
+    return partialMatch.id;
+  }
+
+  return state.selectedSceneId || (state.scenes.length === 1 ? state.scenes[0].id : "");
+}
+
+function resolveParsedCharacterIds(shot) {
+  const sourceNames = [
+    ...(Array.isArray(shot?.characters) ? shot.characters : []),
+    ...getParsedShotDialogueEntries(shot).map((item) => item.character)
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  const uniqueNames = [...new Set(sourceNames)];
+  const matchedIds = [];
+  const unmatchedNames = [];
+
+  uniqueNames.forEach((name) => {
+    const normalizedName = normalizeMatchText(name);
+    const matchedCharacter = state.characters.find((item) => normalizeMatchText(item?.name) === normalizedName);
+    if (matchedCharacter) {
+      matchedIds.push(matchedCharacter.id);
+    } else {
+      unmatchedNames.push(name);
+    }
+  });
+
+  return {
+    matchedIds: [...new Set(matchedIds)],
+    unmatchedNames
+  };
+}
+
+function mapParsedShotSize(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return forms.shotSize;
+  }
+  if (text.includes("特写")) {
+    return "extreme_closeup";
+  }
+  if (text.includes("近景")) {
+    return "closeup";
+  }
+  if (text.includes("中")) {
+    return "medium";
+  }
+  if (text.includes("全景") || text.includes("远景")) {
+    return "wide";
+  }
+  return forms.shotSize;
+}
+
+function mapParsedShotMovement(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return forms.shotMovement;
+  }
+  if (text.includes("推")) {
+    return "push_in";
+  }
+  if (text.includes("拉")) {
+    return "pull_out";
+  }
+  if (text.includes("摇")) {
+    return "pan";
+  }
+  if (text.includes("跟")) {
+    return "tracking";
+  }
+  if (text.includes("固定") || text.includes("静")) {
+    return "static";
+  }
+  return forms.shotMovement;
+}
+
+function mapParsedCameraAngle(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "eye_level";
+  }
+  if (text.includes("顶")) {
+    return "top_down";
+  }
+  if (text.includes("俯")) {
+    return "high_angle";
+  }
+  if (text.includes("仰")) {
+    return "low_angle";
+  }
+  return "eye_level";
+}
+
+function buildImportedShotMedia() {
+  return {
+    mode: normalizeShotInputMode(forms.shotInputMode),
+    generate_audio: Boolean(forms.shotGenerateAudio),
+    first_frame_path: "",
+    last_frame_path: "",
+    reference_image_paths: []
+  };
+}
+
+function getSceneDirectSceneId() {
+  return String(forms.shotSceneId || state.selectedSceneId || "").trim();
+}
+
+function buildSceneDirectPayload() {
+  return {
+    characters: [...state.selectedCharacterIds],
+    media: buildShotMediaPayload(forms),
+    visual: {
+      aspect_ratio: forms.shotAspectRatio,
+      style: "cinematic realism",
+      resolution: forms.shotResolution,
+      generation_count: normalizeShotGenerationCount(forms.shotGenerationCount),
+      shot_size: forms.shotSize,
+      camera_angle: "eye_level",
+      camera_movement: forms.shotMovement,
+      lens: "50mm",
+      depth_of_field: "medium",
+      lighting: forms.shotLighting.trim(),
+      palette: forms.shotPalette.trim(),
+      duration_seconds: normalizeShotDuration(forms.shotDuration)
+    }
+  };
+}
+
+async function handleImportReadableShot(scene, shot, sceneIndex, shotIndex) {
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
+    setError("请先选择一个分镜板，再导入镜头卡草稿");
+    return;
+  }
+
+  const sceneId = resolveParsedSceneId(scene);
+  if (!sceneId) {
+    setError("未匹配到可用场景，请先创建或选择对应场景");
+    return;
+  }
+
+  const { matchedIds, unmatchedNames } = resolveParsedCharacterIds(shot);
+  const dialogues = getParsedShotDialogueEntries(shot);
+  const story = buildParsedShotStoryPayload(shot);
+  const shotCamera = shot?.camera || {};
+  const episodeId = String(
+    parsedScriptObject.value?.episode_id || selectedStoryboard.value?.episode_id || state.selectedEpisodeId || ""
+  ).trim();
+
+  loading.importParsedShot = true;
+  try {
+    const response = await createShot(state.selectedSeriesSlug, state.selectedStoryboardId, {
+      scene_id: sceneId,
+      shot_payload: {
+        characters: matchedIds,
+        script_source: {
+          episode_id: episodeId,
+          scene_index: sceneIndex + 1,
+          shot_index: shotIndex + 1
+        },
+        story,
+        dialogue: dialogues,
+        media: buildImportedShotMedia(),
+        visual: {
+          aspect_ratio: forms.shotAspectRatio,
+          style: "cinematic realism",
+          resolution: forms.shotResolution,
+          generation_count: normalizeShotGenerationCount(forms.shotGenerationCount),
+          shot_size: mapParsedShotSize(shotCamera.shot_size),
+          camera_angle: mapParsedCameraAngle(shotCamera.angle),
+          camera_movement: mapParsedShotMovement(shotCamera.movement),
+          lens: "50mm",
+          depth_of_field: "medium",
+          lighting: forms.shotLighting.trim(),
+          palette: forms.shotPalette.trim(),
+          duration_seconds: normalizeShotDuration(forms.shotDuration)
+        },
+        status: "draft"
+      }
+    });
+
+    await loadProductionData(state.selectedSeriesSlug);
+    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    state.selectedSceneId = sceneId;
+    state.selectedShotId = response.item.id;
+    setNotice(
+      `已导入镜头卡草稿：${response.item.id}${unmatchedNames.length ? `，未匹配角色：${unmatchedNames.join("、")}` : ""}`
+    );
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.importParsedShot = false;
+  }
 }
 
 async function loadHealth() {
@@ -715,12 +1487,14 @@ async function loadProductionData(seriesSlug) {
     state.characters = [];
     state.scenes = [];
     state.storyboards = [];
+    state.snapshots = [];
     state.jobs = [];
     state.shots = [];
     state.selectedCharacterId = "";
     state.selectedSceneId = "";
     state.selectedStoryboardId = "";
     state.selectedShotId = "";
+    state.selectedSnapshotId = "";
     state.selectedJobId = "";
     state.selectedCharacterBible = null;
     state.selectedScenePackage = null;
@@ -731,10 +1505,11 @@ async function loadProductionData(seriesSlug) {
 
   loading.production = true;
   try {
-    const [characters, scenes, storyboards, jobs] = await Promise.all([
+    const [characters, scenes, storyboards, snapshots, jobs] = await Promise.all([
       listCharacters(seriesSlug),
       listScenes(seriesSlug),
       listStoryboards(seriesSlug),
+      listSnapshots(seriesSlug),
       listJobs(seriesSlug)
     ]);
 
@@ -745,6 +1520,7 @@ async function loadProductionData(seriesSlug) {
     state.characters = characters.items || [];
     state.scenes = scenes.items || [];
     state.storyboards = storyboards.items || [];
+    state.snapshots = snapshots.items || [];
     state.jobs = jobs.items || [];
     syncAssetCounts();
 
@@ -760,6 +1536,10 @@ async function loadProductionData(seriesSlug) {
     if (!state.jobs.some((item) => item.id === state.selectedJobId)) {
       state.selectedJobId = state.jobs[0]?.id || "";
     }
+    if (!state.snapshots.some((item) => item.id === state.selectedSnapshotId)) {
+      state.selectedSnapshotId = "";
+      state.selectedSnapshot = null;
+    }
     if (!state.scenes.some((item) => item.id === forms.shotSceneId)) {
       forms.shotSceneId = state.scenes[0]?.id || "";
     }
@@ -770,6 +1550,11 @@ async function loadProductionData(seriesSlug) {
       await loadJobDetail(seriesSlug, state.selectedJobId);
     } else {
       state.selectedJob = null;
+    }
+    if (state.selectedSnapshotId) {
+      await loadSnapshotDetail(seriesSlug, state.selectedSnapshotId);
+    } else {
+      state.selectedSnapshot = null;
     }
   } catch (error) {
     if (requestId !== productionRequestSeed || seriesSlug !== state.selectedSeriesSlug) {
@@ -981,6 +1766,7 @@ async function loadJobDetail(seriesSlug, jobId) {
 async function loadSnapshotDetail(seriesSlug, snapshotId) {
   const requestId = ++snapshotDetailRequestSeed;
   if (!seriesSlug || !snapshotId) {
+    state.selectedSnapshotId = "";
     state.selectedSnapshot = null;
     return;
   }
@@ -1551,7 +2337,8 @@ async function handleCreateStoryboard() {
   try {
     const response = await createStoryboard({
       series_slug: state.selectedSeriesSlug,
-      episode_id: state.selectedEpisodeId
+      episode_id: state.selectedEpisodeId,
+      production_mode: "shot_pipeline"
     });
     await loadProductionData(state.selectedSeriesSlug);
     state.selectedStoryboardId = response.item.id;
@@ -1560,6 +2347,35 @@ async function handleCreateStoryboard() {
     setError(error);
   } finally {
     loading.createStoryboard = false;
+  }
+}
+
+async function handleChangeStoryboardProductionMode(mode) {
+  if (!state.selectedSeriesSlug || !selectedStoryboard.value) {
+    setError("请先选择一个分镜板");
+    return;
+  }
+
+  const normalizedMode = normalizeStoryboardProductionMode(mode);
+  if (normalizedMode === normalizeStoryboardProductionMode(selectedStoryboard.value.production_mode)) {
+    return;
+  }
+
+  loading.updateStoryboard = true;
+  try {
+    await updateStoryboard(state.selectedSeriesSlug, selectedStoryboard.value.id, {
+      production_mode: normalizedMode
+    });
+    await loadProductionData(state.selectedSeriesSlug);
+    if (normalizedMode === "scene_direct") {
+      state.selectedShotId = "";
+      cancelShotEdit();
+    }
+    setNotice(`分镜板已切换为${formatStoryboardProductionMode(normalizedMode)}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.updateStoryboard = false;
   }
 }
 
@@ -1598,6 +2414,10 @@ async function handleCreateShot() {
     setError("请先创建或选择一个分镜板");
     return;
   }
+  if (selectedStoryboardProductionMode.value !== "shot_pipeline") {
+    setError("当前分镜板处于场景直出模式，不创建单镜头卡");
+    return;
+  }
   if (!forms.shotSceneId) {
     setError("请先选择一个场景");
     return;
@@ -1605,15 +2425,20 @@ async function handleCreateShot() {
 
   loading.createShot = true;
   try {
+    applyShotModeRules(forms);
+    validateShotSource(forms);
     const response = await createShot(state.selectedSeriesSlug, state.selectedStoryboardId, {
       scene_id: forms.shotSceneId,
       shot_payload: {
         characters: state.selectedCharacterIds,
+        story: buildShotStoryPayload(forms),
+        dialogue: buildShotDialoguePayload(forms),
         media: buildShotMediaPayload(forms),
         visual: {
-          aspect_ratio: "16:9",
+          aspect_ratio: forms.shotAspectRatio,
           style: "cinematic realism",
-          resolution: "1080p",
+          resolution: forms.shotResolution,
+          generation_count: normalizeShotGenerationCount(forms.shotGenerationCount),
           shot_size: forms.shotSize,
           camera_angle: "eye_level",
           camera_movement: forms.shotMovement,
@@ -1621,7 +2446,7 @@ async function handleCreateShot() {
           depth_of_field: "medium",
           lighting: forms.shotLighting.trim(),
           palette: forms.shotPalette.trim(),
-          duration_seconds: Number(forms.shotDuration) || 5
+          duration_seconds: normalizeShotDuration(forms.shotDuration)
         }
       }
     });
@@ -1651,15 +2476,22 @@ async function handleUpdateShot(item = selectedShot.value) {
 
   loading.updateShot = true;
   try {
+    applyShotModeRules(inlineEditing);
+    validateShotSource(inlineEditing);
     await updateShot(state.selectedSeriesSlug, state.selectedStoryboardId, targetShotId, {
       scene_id: inlineEditing.shotSceneId,
       characters: [...inlineEditing.shotCharacterIds],
+      story: buildShotStoryPayload(inlineEditing),
+      dialogue: buildShotDialoguePayload(inlineEditing),
       media: buildShotMediaPayload(inlineEditing),
       visual: {
         ...(targetShot.visual || {}),
+        aspect_ratio: inlineEditing.shotAspectRatio,
+        resolution: inlineEditing.shotResolution,
+        generation_count: normalizeShotGenerationCount(inlineEditing.shotGenerationCount),
         shot_size: inlineEditing.shotSize,
         camera_movement: inlineEditing.shotMovement,
-        duration_seconds: Number(inlineEditing.shotDuration) || 5,
+        duration_seconds: normalizeShotDuration(inlineEditing.shotDuration),
         lighting: inlineEditing.shotLighting.trim(),
         palette: inlineEditing.shotPalette.trim()
       }
@@ -1708,6 +2540,10 @@ async function handleDeleteShot(item = selectedShot.value) {
 async function handleCreateRenderTask() {
   if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !state.selectedShotId) {
     setError("请先选择一个镜头");
+    return;
+  }
+  if (selectedStoryboardProductionMode.value !== "shot_pipeline") {
+    setError("场景直出模式不走单镜头任务草稿，请改用场景级直出流程");
     return;
   }
 
@@ -1801,6 +2637,19 @@ async function handleOpenJobSnapshot(item = selectedJobComputed.value) {
     state.selectedJobId = targetJob.id;
     return;
   }
+  state.selectedSnapshotId = snapshotId;
+  await loadSnapshotDetail(state.selectedSeriesSlug, snapshotId);
+}
+
+async function handleOpenSnapshot(item = state.selectedSnapshot) {
+  const targetSnapshot = item || state.selectedSnapshot;
+  const snapshotId = targetSnapshot?.id || "";
+  if (!state.selectedSeriesSlug || !snapshotId) {
+    setError("请先选择一个快照");
+    return;
+  }
+
+  state.selectedSnapshotId = snapshotId;
   await loadSnapshotDetail(state.selectedSeriesSlug, snapshotId);
 }
 
@@ -1834,9 +2683,42 @@ async function handleDeleteJob(item = selectedJobComputed.value) {
   }
 }
 
+async function handleDeleteSnapshot(item = state.selectedSnapshot) {
+  const targetSnapshot = item || state.selectedSnapshot;
+  const snapshotId = targetSnapshot?.id || "";
+  if (!state.selectedSeriesSlug || !snapshotId) {
+    setError("请先选择一个快照");
+    return;
+  }
+
+  const confirmed = await confirmDanger(`确定删除快照“${snapshotId}”吗？`, "删除快照");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteSnapshot = true;
+  try {
+    await deleteSnapshot(state.selectedSeriesSlug, snapshotId);
+    if (state.selectedSnapshotId === snapshotId) {
+      state.selectedSnapshotId = "";
+      state.selectedSnapshot = null;
+    }
+    await loadProductionData(state.selectedSeriesSlug);
+    setNotice(`快照已删除：${snapshotId}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteSnapshot = false;
+  }
+}
+
 async function handleAssembleShotPackage() {
   if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !state.selectedShotId) {
     setError("请先选择一个镜头");
+    return;
+  }
+  if (selectedStoryboardProductionMode.value !== "shot_pipeline") {
+    setError("场景直出模式不组装单镜头包，请改用场景级组包流程");
     return;
   }
 
@@ -1849,6 +2731,90 @@ async function handleAssembleShotPackage() {
     setError(error);
   } finally {
     loading.shotPackage = false;
+  }
+}
+
+async function handleAssembleSceneDirectPackage() {
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
+    setError("请先选择一个分镜板");
+    return;
+  }
+  if (selectedStoryboardProductionMode.value !== "scene_direct") {
+    setError("当前分镜板不是场景直出模式");
+    return;
+  }
+
+  const sceneId = getSceneDirectSceneId();
+  if (!sceneId) {
+    setError("请先选择一个场景");
+    return;
+  }
+
+  loading.sceneDirectPackage = true;
+  try {
+    applyShotModeRules(forms);
+    validateShotSource(forms);
+    await assembleScenePackage(state.selectedSeriesSlug, state.selectedStoryboardId, sceneId, buildSceneDirectPayload());
+    await loadProductionData(state.selectedSeriesSlug);
+    state.selectedSceneId = sceneId;
+    setNotice(`场景直出包已组装：${sceneId}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.sceneDirectPackage = false;
+  }
+}
+
+async function handleCreateSceneDirectTask() {
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
+    setError("请先选择一个分镜板");
+    return;
+  }
+  if (selectedStoryboardProductionMode.value !== "scene_direct") {
+    setError("当前分镜板不是场景直出模式");
+    return;
+  }
+
+  const sceneId = getSceneDirectSceneId();
+  if (!sceneId) {
+    setError("请先选择一个场景");
+    return;
+  }
+
+  loading.createSceneDirectTask = true;
+  try {
+    applyShotModeRules(forms);
+    validateShotSource(forms);
+    await assembleScenePackage(state.selectedSeriesSlug, state.selectedStoryboardId, sceneId, buildSceneDirectPayload());
+    const snapshotResponse = await createSceneDirectSnapshot({
+      series_slug: state.selectedSeriesSlug,
+      storyboard_id: state.selectedStoryboardId,
+      provider_payload: {
+        source: "frontend-scene-direct",
+        note: "seedance-scene-direct"
+      }
+    });
+    const jobResponse = await createVideoJobFromSnapshot({
+      series_slug: state.selectedSeriesSlug,
+      snapshot_id: snapshotResponse.item.id,
+      type: "video_generation",
+      provider: {
+        name: "doubao-seedance-2-0",
+        submit_mode: "generic_http",
+        model: "doubao-seedance-2-0-260128"
+      },
+      auto_submit: false
+    });
+    await loadProductionData(state.selectedSeriesSlug);
+    state.selectedSceneId = sceneId;
+    state.selectedSnapshotId = snapshotResponse.item.id;
+    state.selectedJobId = jobResponse.item.id;
+    await loadJobDetail(state.selectedSeriesSlug, jobResponse.item.id);
+    setNotice(`已生成场景快照 ${snapshotResponse.item.id}，并创建任务草稿 ${jobResponse.item.id}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.createSceneDirectTask = false;
   }
 }
 
@@ -1934,6 +2900,20 @@ watch(
     await loadJobDetail(state.selectedSeriesSlug, jobId);
     const job = state.jobs.find((item) => item.id === jobId) || null;
     await loadSnapshotDetail(state.selectedSeriesSlug, job?.snapshot_id || "");
+  }
+);
+
+watch(
+  () => forms.shotInputMode,
+  () => {
+    applyShotModeRules(forms);
+  }
+);
+
+watch(
+  () => inlineEditing.shotInputMode,
+  () => {
+    applyShotModeRules(inlineEditing);
   }
 );
 
@@ -2060,6 +3040,10 @@ onMounted(boot);
               <strong>{{ selectedStoryboard?.id || "暂无" }}</strong>
             </div>
             <div>
+              <span>生产模式</span>
+              <strong>{{ formatStoryboardProductionMode(selectedStoryboardProductionMode) }}</strong>
+            </div>
+            <div>
               <span>输出根目录</span>
               <strong>output/</strong>
             </div>
@@ -2172,12 +3156,97 @@ onMounted(boot);
                 <p class="panel-kicker">结构化结果</p>
                 <h2>解析 JSON</h2>
               </div>
-              <el-button class="action-button dark" :disabled="loading.saveParsed" @click="handleSaveParsedScript">
-                {{ loading.saveParsed ? "保存中..." : "保存 JSON" }}
-              </el-button>
+              <div class="inline-actions compact-actions" style="flex-shrink: 0;display: flex;gap: 12px;">
+                <el-radio-group v-model="parsedScriptViewMode" text-color="#fff" fill="var(--ui-accent-soft)"
+                  class="view-switch">
+                  <el-radio-button label="raw">原生结构</el-radio-button>
+                  <el-radio-button label="readable">可读视图</el-radio-button>
+                </el-radio-group>
+                <el-button class="action-button dark" :disabled="loading.saveParsed" @click="handleSaveParsedScript">
+                  {{ loading.saveParsed ? "保存中..." : "保存 JSON" }}
+                </el-button>
+              </div>
             </div>
-            <el-input v-model="state.parsedScriptText" class="field-textarea editor-textarea code-textarea"
-              type="textarea" :autosize="{ minRows: 22, maxRows: 30 }" resize="auto" placeholder="" />
+            <template v-if="parsedScriptViewMode === 'raw'">
+              <el-input v-model="state.parsedScriptText" class="field-textarea editor-textarea code-textarea"
+                type="textarea" :autosize="{ minRows: 22, maxRows: 30 }" resize="auto" placeholder="" />
+            </template>
+            <template v-else>
+              <div v-if="parsedScriptObject" class="readable-script-view">
+                <div v-if="parsedScriptReadableOutline" class="meta-panel">
+                  <div class="meta-row">
+                    <span>剧集标题</span>
+                    <strong>{{ formatReadableField(parsedScriptReadableOutline["剧集标题"]) }}</strong>
+                  </div>
+                  <div class="meta-row">
+                    <span>场景总数</span>
+                    <strong>{{ parsedScriptReadableOutline["场景总数"] ?? 0 }}</strong>
+                  </div>
+                  <div class="meta-row meta-row-wide">
+                    <span>角色总览</span>
+                    <strong>{{ (parsedScriptReadableOutline["角色总览"] || []).join("、") || "暂无" }}</strong>
+                  </div>
+                </div>
+
+                <div v-if="parsedScriptReadableScenes.length" class="form-stack">
+                  <div v-for="(scene, sceneIndex) in parsedScriptReadableScenes"
+                    :key="scene.scene_id || scene.readable?.['场景编号']" class="meta-panel">
+                    <div class="meta-row">
+                      <span>场景编号</span>
+                      <strong>{{ getReadableSceneInfo(scene)["场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>场景地点</span>
+                      <strong>{{ formatReadableField(getReadableSceneInfo(scene)["场景地点"] || scene.location) }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>时间</span>
+                      <strong>{{ formatReadableField(getReadableSceneInfo(scene)["时间"] || scene.time) }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>镜头数</span>
+                      <strong>{{ getReadableSceneInfo(scene)["镜头数"] ?? (scene.shots || []).length }}</strong>
+                    </div>
+                    <div class="meta-row meta-row-wide">
+                      <span>场景摘要</span>
+                      <strong>{{ formatReadableField(getReadableSceneInfo(scene)["场景摘要"] || scene.summary) }}</strong>
+                    </div>
+
+                    <div v-if="(scene.shots || []).length" class="mini-list" style="grid-column: 1 / -1; ">
+                      <div v-for="(shot, shotIndex) in scene.shots || []"
+                        :key="`${scene.scene_id || 'scene'}-${shot.shot_id || getReadableShotInfo(shot)['镜头编号']}`"
+                        class="mini-card">
+                        <div class="item-body">
+                          <strong>镜头 {{ getReadableShotInfo(shot)["镜头编号"] ?? shot.shot_id ?? "?" }}</strong>
+                          <small>{{ formatReadableField(getReadableShotInfo(shot)["画面描述"] || shot.description) }}</small>
+                          <small>{{ formatReadableField(getReadableShotInfo(shot)["镜头信息"] || shot.camera?.summary || formatLegacyCameraSummary(shot.camera)) }}</small>
+                          <small>角色：{{ formatReadableField(getReadableShotInfo(shot)["出场角色"] || (shot.characters ||
+                            []).join("、")) }}</small>
+                          <small>对白：{{ formatReadableField(getReadableShotInfo(shot)["对白"] ||
+                            formatDialogueEntries(shot.dialogues)) }}</small>
+                          <small>情绪 / 节拍：{{ formatReadableField(getReadableShotInfo(shot)["情绪"] || shot.emotion) }} ·
+                            {{ formatReadableField(getReadableShotInfo(shot)["剧情节拍"] || shot.beat) }}</small>
+                          <div class="script-shot-actions">
+                            <el-button class="action-button ghost compact-button"
+                              @click.stop="handleCopyReadableShot(scene, shot, sceneIndex, shotIndex)">
+                              复制成分镜描述
+                            </el-button>
+                            <el-button class="action-button dark compact-button"
+                              :disabled="loading.importParsedShot || !state.selectedStoryboardId"
+                              @click.stop="handleImportReadableShot(scene, shot, sceneIndex, shotIndex)">
+                              {{ loading.importParsedShot ? "导入中..." : "导入为镜头卡草稿" }}
+                            </el-button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else class="empty-state">当前解析结果还没有场景内容。</div>
+              </div>
+              <div v-else class="empty-state">当前 JSON 不是合法格式，无法切换到可读视图。</div>
+            </template>
           </article>
         </section>
 
@@ -2478,6 +3547,7 @@ onMounted(boot);
               <div class="item-body" @click="state.selectedStoryboardId = item.id">
                 <strong>{{ item.id }}</strong>
                 <span>{{ item.episode_id }}</span>
+                <small>{{ formatStoryboardProductionMode(item.production_mode) }}</small>
                 <small>{{ item.shot_ids.length }} 个镜头</small>
               </div>
               <div class="item-actions">
@@ -2489,35 +3559,481 @@ onMounted(boot);
             </div>
           </div>
 
-          <div class="subsection">
-            <h3>新建镜头</h3>
+          <div v-if="selectedStoryboard" class="subsection">
+            <div class="panel-header sub-panel-header">
+              <div>
+                <p class="panel-kicker">生产模式</p>
+                <h3>{{ formatStoryboardProductionMode(selectedStoryboardProductionMode) }}</h3>
+              </div>
+              <el-radio-group :model-value="selectedStoryboardProductionMode" class="view-switch storyboard-mode-switch"
+                @update:model-value="handleChangeStoryboardProductionMode" text-color="#fff"
+                fill="var(--ui-accent-soft)" style="display: flex;">
+                <el-radio-button v-for="item in storyboardProductionModeOptions" :key="item.value" :label="item.value">
+                  {{ item.label }}
+                </el-radio-button>
+              </el-radio-group>
+            </div>
+            <p class="inline-note">
+              {{ selectedStoryboardProductionMode === "shot_pipeline"
+                ? "分镜生产模式以单镜头为最小生成单元：一张镜头卡对应一份镜头包与一条 Seedance 任务草稿，适合稳定生产与后期拼接。"
+                : "场景直出模式以整段场景为最小生成单元：不创建单镜头卡，后续会围绕场景摘要、节拍与参考设定一次生成整段视频。" }}
+            </p>
+          </div>
+
+          <template v-if="selectedStoryboardProductionMode === 'shot_pipeline'">
+            <div class="subsection">
+              <h3>新建镜头</h3>
+              <div class="form-stack">
+                <el-select v-model="forms.shotSceneId" class="field-select" placeholder="选择关联场景" clearable>
+                  <el-option v-for="item in state.scenes" :key="item.id" :label="`${item.name} · ${item.id}`"
+                    :value="item.id" />
+                </el-select>
+
+                <el-select v-model="forms.shotInputMode" class="field-select" placeholder="选择 Seedance 输入模式">
+                  <el-option v-for="item in shotInputModeOptions" :key="item.value" :label="item.label"
+                    :value="item.value" />
+                </el-select>
+
+                <div class="split-grid">
+                  <el-select v-model="forms.shotAspectRatio" class="field-select" placeholder="视频比例">
+                    <el-option v-for="item in shotAspectRatioOptions" :key="item.value" :label="item.label"
+                      :value="item.value" />
+                  </el-select>
+                  <el-select v-model="forms.shotResolution" class="field-select" placeholder="分辨率">
+                    <el-option v-for="item in shotResolutionOptions" :key="item.value" :label="item.label"
+                      :value="item.value" />
+                  </el-select>
+                </div>
+
+                <div class="split-grid">
+                  <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="15" :step="1" />
+                  <el-select v-model="forms.shotGenerationCount" class="field-select" placeholder="生成数量">
+                    <el-option v-for="item in shotGenerationCountOptions" :key="item.value" :label="item.label"
+                      :value="item.value" />
+                  </el-select>
+                </div>
+
+                <el-checkbox v-model="forms.shotGenerateAudio">需要声音</el-checkbox>
+
+                <div v-if="isReferenceMode(forms.shotInputMode)" class="shot-media-panel">
+                  <div class="shot-media-header">
+                    <div>
+                      <strong>参考生成</strong>
+                      <p class="upload-copy">将自动注入角色圣经拼图与场景参考拼图，不需要上传首尾帧。</p>
+                    </div>
+                    <small>{{ getAutoReferenceSummary(state.selectedCharacterIds, forms.shotSceneId).totalCount }}
+                      张系统参考</small>
+                  </div>
+                  <div class="meta-list compact-meta-list">
+                    <div>
+                      <span>角色圣经拼图</span>
+                      <strong>{{ getAutoReferenceSummary(state.selectedCharacterIds, forms.shotSceneId).characterCount }}</strong>
+                    </div>
+                    <div>
+                      <span>场景参考拼图</span>
+                      <strong>{{ getAutoReferenceSummary(state.selectedCharacterIds, forms.shotSceneId).sceneCount }}</strong>
+                    </div>
+                    <div>
+                      <span>角色匹配</span>
+                      <strong>{{ getAutoReferenceSummary(state.selectedCharacterIds, forms.shotSceneId).characterNames.join("、") || "未选角色" }}</strong>
+                    </div>
+                    <div>
+                      <span>场景匹配</span>
+                      <strong>{{ getAutoReferenceSummary(state.selectedCharacterIds, forms.shotSceneId).sceneName || "未选场景" }}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else-if="isFirstLastFrameMode(forms.shotInputMode)" class="shot-media-panel">
+                  <div class="shot-media-header">
+                    <div>
+                      <strong>首尾帧生成</strong>
+                      <p class="upload-copy">首帧必传，尾帧可选。本模式不会注入角色圣经拼图和场景参考拼图。</p>
+                    </div>
+                    <small>{{ getShotMediaEntries(forms).length }} 张图片</small>
+                  </div>
+
+                  <div class="shot-media-grid">
+                    <label class="shot-upload-tile">
+                      <span class="shot-upload-chip">首帧</span>
+                      <strong>上传首帧图</strong>
+                      <small>必传，用于确定开场画面</small>
+                      <input class="shot-upload-input" type="file" accept="image/*"
+                        @change="handleShotMediaUpload(forms, 'first_frame', $event)" />
+                    </label>
+
+                    <label class="shot-upload-tile">
+                      <span class="shot-upload-chip">尾帧</span>
+                      <strong>上传尾帧图</strong>
+                      <small>可选，用于约束结尾状态</small>
+                      <input class="shot-upload-input" type="file" accept="image/*"
+                        @change="handleShotMediaUpload(forms, 'last_frame', $event)" />
+                    </label>
+                  </div>
+
+                  <div v-if="getShotMediaEntries(forms).length" class="reference-grid shot-media-preview-grid">
+                    <div v-for="image in getShotMediaEntries(forms)" :key="image.key"
+                      class="reference-card shot-media-card">
+                      <div class="reference-header">
+                        <strong>{{ image.label }}</strong>
+                        <small>{{ image.path }}</small>
+                      </div>
+                      <el-button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
+                        @click="removeShotMediaEntry(forms, image.kind, image.path)">
+                        移除
+                      </el-button>
+                      <el-image class="preview-image" :src="assetUrl(image.path)"
+                        :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
+                        preview-teleported />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="split-grid">
+                  <el-select v-model="forms.shotSize" class="field-select" placeholder="镜头景别">
+                    <el-option v-for="item in shotSizeOptions" :key="item.value" :label="item.label"
+                      :value="item.value" />
+                  </el-select>
+
+                  <el-select v-model="forms.shotMovement" class="field-select" placeholder="运镜方式">
+                    <el-option v-for="item in shotMovementOptions" :key="item.value" :label="item.label"
+                      :value="item.value" />
+                  </el-select>
+                </div>
+
+                <div class="split-grid">
+                  <el-input v-model="forms.shotLighting" class="field" type="text" placeholder="输入光线关键词" />
+                  <el-input v-model="forms.shotPalette" class="field" type="text" placeholder="输入色调关键词" />
+                </div>
+
+                <div class="story-binding-panel">
+                  <div class="story-binding-header">
+                    <strong>剧情绑定</strong>
+                    <small>镜头卡自身保存剧情描述、对白与原文摘录，镜头包组装优先使用这里。</small>
+                  </div>
+                  <el-input
+                    v-model="forms.shotStoryDescription"
+                    class="field-textarea compact"
+                    type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 4 }"
+                    placeholder="剧情描述：这个镜头里具体拍什么"
+                  />
+                  <div class="split-grid">
+                    <el-input v-model="forms.shotStoryEmotion" class="field" type="text" placeholder="情绪基调" />
+                    <el-input v-model="forms.shotStoryBeat" class="field" type="text" placeholder="剧情节拍 / 动作节点" />
+                  </div>
+                  <el-input
+                    v-model="forms.shotStoryDialogue"
+                    class="field-textarea compact"
+                    type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 5 }"
+                    placeholder="对白，一行一句，例如：乌萨奇: 小八小八，别睡啦！"
+                  />
+                  <el-input
+                    v-model="forms.shotStoryRawExcerpt"
+                    class="field-textarea compact"
+                    type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 6 }"
+                    placeholder="剧本原文摘录，可直接粘贴当前镜头对应的原始剧本片段"
+                  />
+                </div>
+
+                <el-checkbox-group v-model="state.selectedCharacterIds" class="check-grid">
+                  <el-checkbox v-for="item in state.characters" :key="item.id" :value="item.id" class="check-card">
+                    {{ item.name }}
+                  </el-checkbox>
+                </el-checkbox-group>
+
+                <el-button class="action-button warm primary-action" :disabled="loading.createShot"
+                  @click="handleCreateShot">
+                  {{ loading.createShot ? "创建中..." : "生成镜头卡" }}
+                </el-button>
+              </div>
+            </div>
+
+            <div class="mini-list">
+              <div v-for="item in state.shots" :key="item.id" class="mini-card selectable"
+                :class="{ active: item.id === state.selectedShotId }">
+                <div class="item-body" @click="state.selectedShotId = item.id">
+                  <template v-if="isEditingShot(item.id)">
+                    <div class="item-editor">
+                      <el-select v-model="inlineEditing.shotSceneId" class="field-select" placeholder="选择关联场景">
+                        <el-option v-for="scene in state.scenes" :key="scene.id" :label="`${scene.name} · ${scene.id}`"
+                          :value="scene.id" />
+                      </el-select>
+                      <el-select v-model="inlineEditing.shotInputMode" class="field-select"
+                        placeholder="选择 Seedance 输入模式">
+                        <el-option v-for="option in shotInputModeOptions" :key="option.value" :label="option.label"
+                          :value="option.value" />
+                      </el-select>
+                      <div class="split-grid">
+                        <el-select v-model="inlineEditing.shotAspectRatio" class="field-select" placeholder="视频比例">
+                          <el-option v-for="option in shotAspectRatioOptions" :key="option.value" :label="option.label"
+                            :value="option.value" />
+                        </el-select>
+                        <el-select v-model="inlineEditing.shotResolution" class="field-select" placeholder="分辨率">
+                          <el-option v-for="option in shotResolutionOptions" :key="option.value" :label="option.label"
+                            :value="option.value" />
+                        </el-select>
+                      </div>
+                      <div class="split-grid">
+                        <el-input-number v-model="inlineEditing.shotDuration" class="field-number" :min="1" :max="15"
+                          :step="1" />
+                        <el-select v-model="inlineEditing.shotGenerationCount" class="field-select" placeholder="生成数量">
+                          <el-option v-for="option in shotGenerationCountOptions" :key="option.value"
+                            :label="option.label" :value="option.value" />
+                        </el-select>
+                      </div>
+                      <el-checkbox v-model="inlineEditing.shotGenerateAudio">需要声音</el-checkbox>
+                      <div v-if="isReferenceMode(inlineEditing.shotInputMode)"
+                        class="shot-media-panel inline-shot-media-panel">
+                        <div class="shot-media-header">
+                          <div>
+                            <strong>参考生成</strong>
+                            <p class="upload-copy">将自动注入角色圣经拼图与场景参考拼图，不展示首尾帧上传。</p>
+                          </div>
+                          <small>{{ getAutoReferenceSummary(inlineEditing.shotCharacterIds, inlineEditing.shotSceneId).totalCount }}
+                            张系统参考</small>
+                        </div>
+                        <div class="meta-list compact-meta-list">
+                          <div>
+                            <span>角色圣经拼图</span>
+                            <strong>{{ getAutoReferenceSummary(inlineEditing.shotCharacterIds, inlineEditing.shotSceneId).characterCount }}</strong>
+                          </div>
+                          <div>
+                            <span>场景参考拼图</span>
+                            <strong>{{ getAutoReferenceSummary(inlineEditing.shotCharacterIds, inlineEditing.shotSceneId).sceneCount }}</strong>
+                          </div>
+                          <div>
+                            <span>角色匹配</span>
+                            <strong>{{ getAutoReferenceSummary(inlineEditing.shotCharacterIds, inlineEditing.shotSceneId).characterNames.join("、") || "未选角色" }}</strong>
+                          </div>
+                          <div>
+                            <span>场景匹配</span>
+                            <strong>{{ getAutoReferenceSummary(inlineEditing.shotCharacterIds, inlineEditing.shotSceneId).sceneName || "未选场景" }}</strong>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-else-if="isFirstLastFrameMode(inlineEditing.shotInputMode)"
+                        class="shot-media-panel inline-shot-media-panel">
+                        <div class="shot-media-header">
+                          <div>
+                            <strong>首尾帧生成</strong>
+                            <p class="upload-copy">首帧必传，尾帧可选。本模式不会注入角色圣经拼图和场景参考拼图。</p>
+                          </div>
+                          <small>{{ getShotMediaEntries(inlineEditing).length }} 张图片</small>
+                        </div>
+
+                        <div class="shot-media-grid">
+                          <label class="shot-upload-tile">
+                            <span class="shot-upload-chip">首帧</span>
+                            <strong>替换首帧图</strong>
+                            <small>必传，用于确定开场画面</small>
+                            <input class="shot-upload-input" type="file" accept="image/*"
+                              @change="handleShotMediaUpload(inlineEditing, 'first_frame', $event)" />
+                          </label>
+
+                          <label class="shot-upload-tile">
+                            <span class="shot-upload-chip">尾帧</span>
+                            <strong>替换尾帧图</strong>
+                            <small>可选，用于约束结尾状态</small>
+                            <input class="shot-upload-input" type="file" accept="image/*"
+                              @change="handleShotMediaUpload(inlineEditing, 'last_frame', $event)" />
+                          </label>
+                        </div>
+
+                        <div v-if="getShotMediaEntries(inlineEditing).length"
+                          class="reference-grid shot-media-preview-grid">
+                          <div v-for="image in getShotMediaEntries(inlineEditing)" :key="image.key"
+                            class="reference-card shot-media-card">
+                            <div class="reference-header">
+                              <strong>{{ image.label }}</strong>
+                              <small>{{ image.path }}</small>
+                            </div>
+                            <el-button class="action-button ghost danger compact-button"
+                              :disabled="loading.shotMediaUpload"
+                              @click="removeShotMediaEntry(inlineEditing, image.kind, image.path)">
+                              移除
+                            </el-button>
+                            <el-image class="preview-image" :src="assetUrl(image.path)"
+                              :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
+                              preview-teleported />
+                          </div>
+                        </div>
+                      </div>
+                      <div class="split-grid">
+                        <el-select v-model="inlineEditing.shotSize" class="field-select" placeholder="镜头景别">
+                          <el-option v-for="option in shotSizeOptions" :key="option.value" :label="option.label"
+                            :value="option.value" />
+                        </el-select>
+                        <el-select v-model="inlineEditing.shotMovement" class="field-select" placeholder="运镜方式">
+                          <el-option v-for="option in shotMovementOptions" :key="option.value" :label="option.label"
+                            :value="option.value" />
+                        </el-select>
+                      </div>
+                      <div class="split-grid">
+                        <el-input v-model="inlineEditing.shotLighting" class="field" type="text"
+                          placeholder="输入光线关键词" />
+                        <el-input v-model="inlineEditing.shotPalette" class="field" type="text" placeholder="输入色调关键词" />
+                      </div>
+                      <div class="story-binding-panel">
+                        <div class="story-binding-header">
+                          <strong>剧情绑定</strong>
+                          <small>这里的描述、对白、摘录会直接参与镜头包组装。</small>
+                        </div>
+                        <el-input
+                          v-model="inlineEditing.shotStoryDescription"
+                          class="field-textarea compact"
+                          type="textarea"
+                          :autosize="{ minRows: 2, maxRows: 4 }"
+                          placeholder="剧情描述：这个镜头里具体拍什么"
+                        />
+                        <div class="split-grid">
+                          <el-input v-model="inlineEditing.shotStoryEmotion" class="field" type="text" placeholder="情绪基调" />
+                          <el-input v-model="inlineEditing.shotStoryBeat" class="field" type="text" placeholder="剧情节拍 / 动作节点" />
+                        </div>
+                        <el-input
+                          v-model="inlineEditing.shotStoryDialogue"
+                          class="field-textarea compact"
+                          type="textarea"
+                          :autosize="{ minRows: 2, maxRows: 5 }"
+                          placeholder="对白，一行一句，例如：乌萨奇: 小八小八，别睡啦！"
+                        />
+                        <el-input
+                          v-model="inlineEditing.shotStoryRawExcerpt"
+                          class="field-textarea compact"
+                          type="textarea"
+                          :autosize="{ minRows: 2, maxRows: 6 }"
+                          placeholder="剧本原文摘录，可直接粘贴当前镜头对应的原始剧本片段"
+                        />
+                      </div>
+                      <el-checkbox-group v-model="inlineEditing.shotCharacterIds" class="check-grid">
+                        <el-checkbox v-for="character in state.characters" :key="character.id" :value="character.id"
+                          class="check-card">
+                          {{ character.name }}
+                        </el-checkbox>
+                      </el-checkbox-group>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <strong>{{ item.id }}</strong>
+                    <small>{{ getShotStoryDisplay(item, "description") }}</small>
+                    <small>对白：{{ formatDialogueEntries(item.dialogue) || "暂无" }}</small>
+                    <small>情绪 / 节拍：{{ getShotStoryDisplay(item, "emotion") }} · {{ getShotStoryDisplay(item, "beat") }}</small>
+                    <span>{{ formatShotInputMode(item.media?.mode) }}</span>
+                    <span>{{ formatShotAspectRatio(item.visual.aspect_ratio) }} ·
+                      {{ formatShotResolution(item.visual.resolution) }}</span>
+                    <span>{{ formatShotSize(item.visual.shot_size) }} ·
+                      {{ formatShotMovement(item.visual.camera_movement) }}</span>
+                    <small>场景：{{ formatSceneLabel(item.scene_id) }}</small>
+                    <small>输出：{{ item.visual.duration_seconds }} 秒 · {{ item.visual.generation_count || 1 }} 条 ·
+                      {{ item.media?.generate_audio ? "有声" : "无声" }}</small>
+                    <small>光线：{{ formatShotKeyword(item.visual.lighting) }} · 色调：{{
+                      formatShotKeyword(item.visual.palette)
+                    }}</small>
+                    <small>参考：{{ isReferenceMode(item.media?.mode) ? "角色圣经拼图 + 场景参考拼图" :
+                      isFirstLastFrameMode(item.media?.mode) ? "首帧/尾帧" : "纯文字" }}</small>
+                    <small>{{ (item.characters || []).length }} 个角色</small>
+                  </template>
+                </div>
+                <div class="item-actions">
+                  <el-button v-if="isEditingShot(item.id)" class="action-button dark compact-button"
+                    :disabled="loading.updateShot" @click.stop="handleUpdateShot(item)">
+                    {{ loading.updateShot ? "保存中..." : "保存" }}
+                  </el-button>
+                  <el-button v-else class="action-button ghost compact-button" @click.stop="startShotEdit(item)">
+                    编辑
+                  </el-button>
+                  <el-button v-if="isEditingShot(item.id)" class="action-button ghost compact-button"
+                    @click.stop="cancelShotEdit">
+                    取消
+                  </el-button>
+                  <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteShot"
+                    @click.stop="handleDeleteShot(item)">
+                    {{ loading.deleteShot ? "删除中..." : "删除" }}
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <div v-else class="subsection">
+            <h3>场景直出配置</h3>
             <div class="form-stack">
-              <el-select v-model="forms.shotSceneId" class="field-select" placeholder="选择关联场景" clearable>
+              <el-select v-model="forms.shotSceneId" class="field-select" placeholder="选择要直出的场景" clearable>
                 <el-option v-for="item in state.scenes" :key="item.id" :label="`${item.name} · ${item.id}`"
                   :value="item.id" />
               </el-select>
 
               <el-select v-model="forms.shotInputMode" class="field-select" placeholder="选择 Seedance 输入模式">
                 <el-option v-for="item in shotInputModeOptions" :key="item.value" :label="item.label"
-                  :value="item.value" :disabled="item.disabled" />
+                  :value="item.value" />
               </el-select>
 
-              <el-checkbox v-model="forms.shotGenerateAudio">生成有声视频</el-checkbox>
+              <div class="split-grid">
+                <el-select v-model="forms.shotAspectRatio" class="field-select" placeholder="视频比例">
+                  <el-option v-for="item in shotAspectRatioOptions" :key="item.value" :label="item.label"
+                    :value="item.value" />
+                </el-select>
+                <el-select v-model="forms.shotResolution" class="field-select" placeholder="分辨率">
+                  <el-option v-for="item in shotResolutionOptions" :key="item.value" :label="item.label"
+                    :value="item.value" />
+                </el-select>
+              </div>
 
-              <div class="shot-media-panel">
+              <div class="split-grid">
+                <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="15" :step="1" />
+                <el-select v-model="forms.shotGenerationCount" class="field-select" placeholder="生成数量">
+                  <el-option v-for="item in shotGenerationCountOptions" :key="item.value" :label="item.label"
+                    :value="item.value" />
+                </el-select>
+              </div>
+
+              <el-checkbox v-model="forms.shotGenerateAudio">需要声音</el-checkbox>
+
+              <div v-if="isReferenceMode(forms.shotInputMode)" class="shot-media-panel">
                 <div class="shot-media-header">
                   <div>
-                    <strong>镜头素材</strong>
-                    <p class="upload-copy">首帧、尾帧和参考图统一走本地上传，上传后自动回填到镜头配置。</p>
+                    <strong>参考生成</strong>
+                    <p class="upload-copy">自动注入角色圣经拼图与场景参考拼图，用于整段场景视频的角色和空间稳定。</p>
                   </div>
-                  <small>{{ getShotMediaEntries(forms).length }} 张图片 / 2 项已禁用</small>
+                  <small>{{ getAutoReferenceSummary(state.selectedCharacterIds, getSceneDirectSceneId()).totalCount }}
+                    张系统参考</small>
+                </div>
+                <div class="meta-list compact-meta-list">
+                  <div>
+                    <span>角色圣经拼图</span>
+                    <strong>{{ getAutoReferenceSummary(state.selectedCharacterIds, getSceneDirectSceneId()).characterCount }}</strong>
+                  </div>
+                  <div>
+                    <span>场景参考拼图</span>
+                    <strong>{{ getAutoReferenceSummary(state.selectedCharacterIds, getSceneDirectSceneId()).sceneCount }}</strong>
+                  </div>
+                  <div>
+                    <span>角色匹配</span>
+                    <strong>{{ getAutoReferenceSummary(state.selectedCharacterIds, getSceneDirectSceneId()).characterNames.join("、") || "未选角色" }}</strong>
+                  </div>
+                  <div>
+                    <span>场景匹配</span>
+                    <strong>{{ getAutoReferenceSummary(state.selectedCharacterIds, getSceneDirectSceneId()).sceneName || "未选场景" }}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else-if="isFirstLastFrameMode(forms.shotInputMode)" class="shot-media-panel">
+                <div class="shot-media-header">
+                  <div>
+                    <strong>首尾帧生成</strong>
+                    <p class="upload-copy">首帧必传，尾帧可选。场景直出时会围绕首尾帧完成整段剧情过程。</p>
+                  </div>
+                  <small>{{ getShotMediaEntries(forms).length }} 张图片</small>
                 </div>
 
                 <div class="shot-media-grid">
                   <label class="shot-upload-tile">
                     <span class="shot-upload-chip">首帧</span>
                     <strong>上传首帧图</strong>
-                    <small>用于首帧图生视频</small>
+                    <small>必传，用于定义开场画面</small>
                     <input class="shot-upload-input" type="file" accept="image/*"
                       @change="handleShotMediaUpload(forms, 'first_frame', $event)" />
                   </label>
@@ -2525,30 +4041,10 @@ onMounted(boot);
                   <label class="shot-upload-tile">
                     <span class="shot-upload-chip">尾帧</span>
                     <strong>上传尾帧图</strong>
-                    <small>用于首尾帧过渡</small>
+                    <small>可选，用于约束结尾状态</small>
                     <input class="shot-upload-input" type="file" accept="image/*"
                       @change="handleShotMediaUpload(forms, 'last_frame', $event)" />
                   </label>
-
-                  <label class="shot-upload-tile shot-upload-tile-wide">
-                    <span class="shot-upload-chip">参考图</span>
-                    <strong>上传补充参考图</strong>
-                    <small>可一次上传多张，补充主体、场景或构图信息</small>
-                    <input class="shot-upload-input" type="file" accept="image/*" multiple
-                      @change="handleShotMediaUpload(forms, 'reference_images', $event)" />
-                  </label>
-
-                  <div class="shot-disabled-tile">
-                    <span class="shot-upload-chip muted">视频参考</span>
-                    <strong>暂未启用</strong>
-                    <small>当前没有公网素材环境，暂时不支持视频参考。</small>
-                  </div>
-
-                  <div class="shot-disabled-tile">
-                    <span class="shot-upload-chip muted">音频参考</span>
-                    <strong>暂未启用</strong>
-                    <small>等公网环境就绪后，再恢复音频参考能力。</small>
-                  </div>
                 </div>
 
                 <div v-if="getShotMediaEntries(forms).length" class="reference-grid shot-media-preview-grid">
@@ -2569,50 +4065,13 @@ onMounted(boot);
                 </div>
               </div>
 
-              <template v-if="false">
-                <div class="split-grid">
-                  <input class="field file-input" type="file" accept="image/*"
-                    @change="handleShotMediaUpload(forms, 'first_frame', $event)" placeholder="首帧图片路径或公网 URL（可选）" />
-                  <input class="field file-input" type="file" accept="image/*"
-                    @change="handleShotMediaUpload(forms, 'last_frame', $event)" placeholder="尾帧图片路径或公网 URL（可选）" />
-                </div>
-
-                <input class="field file-input" type="file" accept="image/*" multiple
-                  @change="handleShotMediaUpload(forms, 'reference_images', $event)"
-                  :autosize="{ minRows: 2, maxRows: 5 }" placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
-
-                <div class="split-grid">
-                  <div v-if="getShotMediaEntries(forms).length" class="reference-grid">
-                    <div v-for="image in getShotMediaEntries(forms)" :key="image.key" class="reference-card">
-                      <div class="reference-header">
-                        <strong>{{ image.label }}</strong>
-                        <small>{{ image.path }}</small>
-                      </div>
-                      <button class="action-button ghost danger compact-button" :disabled="loading.shotMediaUpload"
-                        @click="removeShotMediaEntry(forms, image.kind, image.path)">
-                        移除
-                      </button>
-                      <el-image class="preview-image" :src="assetUrl(image.path)"
-                        :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
-                        preview-teleported />
-                    </div>
-                  </div>
-                  <el-input v-model="forms.shotReferenceVideosText" class="field-textarea" type="textarea"
-                    :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
-                    placeholder="视频参考，一行一个公网 URL 或 asset://..." />
-                  <el-input v-model="forms.shotReferenceAudiosText" class="field-textarea" type="textarea"
-                    :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
-                    placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
-                </div>
-              </template>
-
               <div class="split-grid">
-                <el-select v-model="forms.shotSize" class="field-select" placeholder="镜头景别">
+                <el-select v-model="forms.shotSize" class="field-select" placeholder="主镜头景别">
                   <el-option v-for="item in shotSizeOptions" :key="item.value" :label="item.label"
                     :value="item.value" />
                 </el-select>
 
-                <el-select v-model="forms.shotMovement" class="field-select" placeholder="运镜方式">
+                <el-select v-model="forms.shotMovement" class="field-select" placeholder="主运镜方式">
                   <el-option v-for="item in shotMovementOptions" :key="item.value" :label="item.label"
                     :value="item.value" />
                 </el-select>
@@ -2623,203 +4082,11 @@ onMounted(boot);
                 <el-input v-model="forms.shotPalette" class="field" type="text" placeholder="输入色调关键词" />
               </div>
 
-              <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="30" :step="1"
-                placeholder="输入镜头时长">
-                <template #suffix>
-                  <span>镜头时长</span>
-                </template>
-              </el-input-number>
-
               <el-checkbox-group v-model="state.selectedCharacterIds" class="check-grid">
                 <el-checkbox v-for="item in state.characters" :key="item.id" :value="item.id" class="check-card">
                   {{ item.name }}
                 </el-checkbox>
               </el-checkbox-group>
-
-              <el-button class="action-button warm primary-action" :disabled="loading.createShot"
-                @click="handleCreateShot">
-                {{ loading.createShot ? "创建中..." : "生成镜头卡" }}
-              </el-button>
-            </div>
-          </div>
-
-          <div class="mini-list">
-            <div v-for="item in state.shots" :key="item.id" class="mini-card selectable"
-              :class="{ active: item.id === state.selectedShotId }">
-              <div class="item-body" @click="state.selectedShotId = item.id">
-                <template v-if="isEditingShot(item.id)">
-                  <div class="item-editor">
-                    <el-select v-model="inlineEditing.shotSceneId" class="field-select" placeholder="选择关联场景">
-                      <el-option v-for="scene in state.scenes" :key="scene.id" :label="`${scene.name} · ${scene.id}`"
-                        :value="scene.id" />
-                    </el-select>
-                    <el-select v-model="inlineEditing.shotInputMode" class="field-select"
-                      placeholder="选择 Seedance 输入模式">
-                      <el-option v-for="option in shotInputModeOptions" :key="option.value" :label="option.label"
-                        :value="option.value" :disabled="option.disabled" />
-                    </el-select>
-                    <el-checkbox v-model="inlineEditing.shotGenerateAudio">生成有声视频</el-checkbox>
-                    <div class="shot-media-panel inline-shot-media-panel">
-                      <div class="shot-media-header">
-                        <div>
-                          <strong>镜头素材</strong>
-                          <p class="upload-copy">在这里替换或追加首帧、尾帧和参考图，不影响其他镜头参数。</p>
-                        </div>
-                        <small>{{ getShotMediaEntries(inlineEditing).length }} 张图片 / 2 项已禁用</small>
-                      </div>
-
-                      <div class="shot-media-grid">
-                        <label class="shot-upload-tile">
-                          <span class="shot-upload-chip">首帧</span>
-                          <strong>替换首帧图</strong>
-                          <small>当前镜头的开场主体</small>
-                          <input class="shot-upload-input" type="file" accept="image/*"
-                            @change="handleShotMediaUpload(inlineEditing, 'first_frame', $event)" />
-                        </label>
-
-                        <label class="shot-upload-tile">
-                          <span class="shot-upload-chip">尾帧</span>
-                          <strong>替换尾帧图</strong>
-                          <small>用于首尾帧过渡</small>
-                          <input class="shot-upload-input" type="file" accept="image/*"
-                            @change="handleShotMediaUpload(inlineEditing, 'last_frame', $event)" />
-                        </label>
-
-                        <label class="shot-upload-tile shot-upload-tile-wide">
-                          <span class="shot-upload-chip">参考图</span>
-                          <strong>继续添加参考图</strong>
-                          <small>可以补充更多主体、场景或构图信息</small>
-                          <input class="shot-upload-input" type="file" accept="image/*" multiple
-                            @change="handleShotMediaUpload(inlineEditing, 'reference_images', $event)" />
-                        </label>
-
-                        <div class="shot-disabled-tile">
-                          <span class="shot-upload-chip muted">视频参考</span>
-                          <strong>暂未启用</strong>
-                          <small>当前没有公网素材环境，暂时不支持视频参考。</small>
-                        </div>
-
-                        <div class="shot-disabled-tile">
-                          <span class="shot-upload-chip muted">音频参考</span>
-                          <strong>暂未启用</strong>
-                          <small>等公网环境就绪后，再恢复音频参考能力。</small>
-                        </div>
-                      </div>
-
-                      <div v-if="getShotMediaEntries(inlineEditing).length"
-                        class="reference-grid shot-media-preview-grid">
-                        <div v-for="image in getShotMediaEntries(inlineEditing)" :key="image.key"
-                          class="reference-card shot-media-card">
-                          <div class="reference-header">
-                            <strong>{{ image.label }}</strong>
-                            <small>{{ image.path }}</small>
-                          </div>
-                          <el-button class="action-button ghost danger compact-button"
-                            :disabled="loading.shotMediaUpload"
-                            @click="removeShotMediaEntry(inlineEditing, image.kind, image.path)">
-                            移除
-                          </el-button>
-                          <el-image class="preview-image" :src="assetUrl(image.path)"
-                            :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
-                            preview-teleported />
-                        </div>
-                      </div>
-                    </div>
-
-                    <template v-if="false">
-                      <div class="split-grid">
-                        <input class="field file-input" type="file" accept="image/*"
-                          @change="handleShotMediaUpload(inlineEditing, 'first_frame', $event)"
-                          placeholder="首帧图片路径或公网 URL（可选）" />
-                        <input class="field file-input" type="file" accept="image/*"
-                          @change="handleShotMediaUpload(inlineEditing, 'last_frame', $event)"
-                          placeholder="尾帧图片路径或公网 URL（可选）" />
-                      </div>
-                      <input class="field file-input" type="file" accept="image/*" multiple
-                        @change="handleShotMediaUpload(inlineEditing, 'reference_images', $event)" resize="vertical"
-                        :autosize="{ minRows: 2, maxRows: 5 }" placeholder="补充图片参考，一行一个相对路径 / 公网 URL / asset://..." />
-                      <div class="split-grid">
-                        <div v-if="getShotMediaEntries(inlineEditing).length" class="reference-grid">
-                          <div v-for="image in getShotMediaEntries(inlineEditing)" :key="image.key"
-                            class="reference-card">
-                            <div class="reference-header">
-                              <strong>{{ image.label }}</strong>
-                              <small>{{ image.path }}</small>
-                            </div>
-                            <button class="action-button ghost danger compact-button"
-                              :disabled="loading.shotMediaUpload"
-                              @click="removeShotMediaEntry(inlineEditing, image.kind, image.path)">
-                              移除
-                            </button>
-                            <el-image class="preview-image" :src="assetUrl(image.path)"
-                              :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover"
-                              preview-teleported />
-                          </div>
-                        </div>
-                        <el-input v-model="inlineEditing.shotReferenceVideosText" class="field-textarea" type="textarea"
-                          :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
-                          placeholder="视频参考，一行一个公网 URL 或 asset://..." />
-                        <el-input v-model="inlineEditing.shotReferenceAudiosText" class="field-textarea" type="textarea"
-                          :disabled="true" resize="vertical" :autosize="{ minRows: 2, maxRows: 5 }"
-                          placeholder="音频参考，一行一个相对路径 / 公网 URL / asset://..." />
-                      </div>
-                    </template>
-                    <div class="split-grid">
-                      <el-select v-model="inlineEditing.shotSize" class="field-select" placeholder="镜头景别">
-                        <el-option v-for="option in shotSizeOptions" :key="option.value" :label="option.label"
-                          :value="option.value" />
-                      </el-select>
-                      <el-select v-model="inlineEditing.shotMovement" class="field-select" placeholder="运镜方式">
-                        <el-option v-for="option in shotMovementOptions" :key="option.value" :label="option.label"
-                          :value="option.value" />
-                      </el-select>
-                    </div>
-                    <div class="split-grid">
-                      <el-input v-model="inlineEditing.shotLighting" class="field" type="text" placeholder="输入光线关键词" />
-                      <el-input v-model="inlineEditing.shotPalette" class="field" type="text" placeholder="输入色调关键词" />
-                    </div>
-                    <el-input-number v-model="inlineEditing.shotDuration" class="field-number" :min="1" :max="30"
-                      :step="1" />
-                    <el-checkbox-group v-model="inlineEditing.shotCharacterIds" class="check-grid">
-                      <el-checkbox v-for="character in state.characters" :key="character.id" :value="character.id"
-                        class="check-card">
-                        {{ character.name }}
-                      </el-checkbox>
-                    </el-checkbox-group>
-                  </div>
-                </template>
-                <template v-else>
-                  <strong>{{ item.id }}</strong>
-                  <span>{{ formatShotInputMode(item.media?.mode) }}</span>
-                  <span>{{ formatShotSize(item.visual.shot_size) }} ·
-                    {{ formatShotMovement(item.visual.camera_movement) }}</span>
-                  <small>场景：{{ formatSceneLabel(item.scene_id) }}</small>
-                  <small>光线：{{ formatShotKeyword(item.visual.lighting) }}</small>
-                  <small>色调：{{ formatShotKeyword(item.visual.palette) }}</small>
-                  <small>图 / 视 / 音：{{ (item.media?.reference_image_paths?.length || 0) + (item.media?.first_frame_path ?
-                    1 : 0) + (item.media?.last_frame_path ? 1 : 0) }} /
-                    {{ item.media?.reference_video_paths?.length || 0 }} /
-                    {{ item.media?.reference_audio_paths?.length || 0 }}</small>
-                  <small>{{ item.visual.duration_seconds }} 秒 · {{ (item.characters || []).length }} 个角色</small>
-                </template>
-              </div>
-              <div class="item-actions">
-                <el-button v-if="isEditingShot(item.id)" class="action-button dark compact-button"
-                  :disabled="loading.updateShot" @click.stop="handleUpdateShot(item)">
-                  {{ loading.updateShot ? "保存中..." : "保存" }}
-                </el-button>
-                <el-button v-else class="action-button ghost compact-button" @click.stop="startShotEdit(item)">
-                  编辑
-                </el-button>
-                <el-button v-if="isEditingShot(item.id)" class="action-button ghost compact-button"
-                  @click.stop="cancelShotEdit">
-                  取消
-                </el-button>
-                <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteShot"
-                  @click.stop="handleDeleteShot(item)">
-                  {{ loading.deleteShot ? "删除中..." : "删除" }}
-                </el-button>
-              </div>
             </div>
           </div>
         </section>
@@ -2833,42 +4100,182 @@ onMounted(boot);
           </div>
 
           <p class="message muted">
-            已接入 Doubao Seedance 2.0 任务草稿生成。当前可先完成镜头包组装、快照落盘和 Seedance 请求体预览，再按配置提交远端任务。
+            {{ selectedStoryboardProductionMode === "shot_pipeline"
+              ? "已接入 Doubao Seedance 2.0 任务草稿生成。当前可先完成镜头包组装、快照落盘和 Seedance 请求体预览，再按配置提交远端任务。"
+              : "当前处于场景直出模式。这里会承接后续的场景级组包、快照与任务提交，不再以单镜头为单位推进。" }}
           </p>
 
-          <el-button class="action-button dark full-width" :disabled="loading.shotPackage"
-            @click="handleAssembleShotPackage">
-            {{ loading.shotPackage ? "组装中..." : "组装镜头包" }}
-          </el-button>
+          <template v-if="selectedStoryboardProductionMode === 'shot_pipeline'">
+            <el-button class="action-button dark full-width" :disabled="loading.shotPackage"
+              @click="handleAssembleShotPackage">
+              {{ loading.shotPackage ? "组装中..." : "组装镜头包" }}
+            </el-button>
 
-          <el-button class="action-button warm full-width primary-action" :disabled="loading.createRender"
-            @click="handleCreateRenderTask">
-            {{ loading.createRender ? "生成中..." : "生成任务草稿" }}
-          </el-button>
+            <el-button class="action-button warm full-width primary-action" :disabled="loading.createRender"
+              @click="handleCreateRenderTask">
+              {{ loading.createRender ? "生成中..." : "生成任务草稿" }}
+            </el-button>
 
-          <div v-if="selectedShot" class="focus-card">
-            <span>当前镜头</span>
-            <strong>{{ selectedShot.id }}</strong>
-            <small>{{ formatShotInputMode(selectedShot.media?.mode) }} · {{ selectedShot.scene_id }} ·
-              {{ selectedShot.visual.duration_seconds }} 秒</small>
-          </div>
+            <div v-if="selectedShot" class="focus-card">
+              <span>当前镜头</span>
+              <strong>{{ selectedShot.id }}</strong>
+              <small>{{ formatShotInputMode(selectedShot.media?.mode) }} · {{ selectedShot.scene_id }} ·
+                {{ selectedShot.visual.duration_seconds }} 秒</small>
+            </div>
 
-          <div v-if="selectedShotPromptPackage?.positive" class="meta-panel">
-            <div class="meta-row">
-              <span>参考素材数量</span>
-              <strong>{{ selectedShotPromptPackage.media_references?.length || selectedShotPromptPackage.reference_images?.length || 0 }}</strong>
+            <div v-if="selectedShot" class="meta-panel">
+              <div class="meta-row meta-row-wide">
+                <span>镜头卡剧情描述</span>
+                <strong>{{ getShotStoryDisplay(selectedShot, "description") }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>镜头卡情绪</span>
+                <strong>{{ getShotStoryDisplay(selectedShot, "emotion") }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>镜头卡节拍</span>
+                <strong>{{ getShotStoryDisplay(selectedShot, "beat") }}</strong>
+              </div>
+              <div class="meta-row meta-row-wide">
+                <span>镜头卡对白</span>
+                <strong class="prompt-preview">{{ formatDialogueEntries(selectedShot.dialogue) || "暂无" }}</strong>
+              </div>
+              <div class="meta-row meta-row-wide">
+                <span>镜头卡原文摘录</span>
+                <strong class="prompt-preview">{{ getShotStoryDisplay(selectedShot, "raw_script_excerpt") }}</strong>
+              </div>
             </div>
-            <div class="meta-row">
-              <span>图片 / 视频 / 音频</span>
-              <strong>{{ selectedShotPromptPackage.reference_images?.length || 0 }} /
-                {{ selectedShotPromptPackage.reference_videos?.length || 0 }} /
-                {{ selectedShotPromptPackage.reference_audios?.length || 0 }}</strong>
+
+            <div v-if="selectedShotPromptPackage?.positive" class="meta-panel">
+              <div class="meta-row">
+                <span>参考素材数量</span>
+                <strong>{{ selectedShotPromptPackage.media_references?.length || selectedShotPromptPackage.reference_images?.length || 0 }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>参考图片</span>
+                <strong>{{ selectedShotPromptPackage.reference_images?.length || 0 }}</strong>
+              </div>
+              <div class="meta-row meta-row-wide">
+                <span>Seedance 提示词预览</span>
+                <strong class="prompt-preview">{{ selectedShotPromptPackage.positive }}</strong>
+              </div>
             </div>
-            <div class="meta-row meta-row-wide">
-              <span>Seedance 提示词预览</span>
-              <strong class="prompt-preview">{{ selectedShotPromptPackage.positive }}</strong>
+
+            <div v-if="selectedShotPromptPackage?.script_context" class="meta-panel">
+              <div class="meta-row">
+                <span>剧集标题</span>
+                <strong>{{ selectedShotPromptPackage.script_context.episode_title || "暂无" }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>场景位置</span>
+                <strong>{{ selectedShotPromptPackage.script_context.scene_location || "暂无" }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>场景时间</span>
+                <strong>{{ selectedShotPromptPackage.script_context.scene_time || "暂无" }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>镜头动作</span>
+                <strong>{{ selectedShotPromptPackage.script_context.shot_description || "暂无" }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>情绪基调</span>
+                <strong>{{ selectedShotPromptPackage.script_context.shot_emotion || "暂无" }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>剧情节点</span>
+                <strong>{{ selectedShotPromptPackage.script_context.shot_beat || "暂无" }}</strong>
+              </div>
+              <div class="meta-row meta-row-wide">
+                <span>当前镜头台词片段</span>
+                <strong
+                  class="prompt-preview">{{ selectedShotPromptPackage.script_context.dialogue_excerpt || "暂无" }}</strong>
+              </div>
+              <div class="meta-row meta-row-wide">
+                <span>剧本原文摘录</span>
+                <strong
+                  class="prompt-preview">{{ selectedShotPromptPackage.script_context.raw_script_excerpt || "暂无" }}</strong>
+              </div>
             </div>
-          </div>
+          </template>
+
+          <template v-else>
+            <el-button class="action-button dark full-width" :disabled="loading.sceneDirectPackage"
+              @click="handleAssembleSceneDirectPackage">
+              {{ loading.sceneDirectPackage ? "组装中..." : "组装场景包" }}
+            </el-button>
+
+            <el-button class="action-button warm full-width primary-action" :disabled="loading.createSceneDirectTask"
+              @click="handleCreateSceneDirectTask">
+              {{ loading.createSceneDirectTask ? "生成中..." : "生成场景任务草稿" }}
+            </el-button>
+
+            <div class="focus-card">
+              <span>当前场景</span>
+              <strong>{{state.scenes.find((item) => item.id === getSceneDirectSceneId())?.name || "请先选择场景"}}</strong>
+              <small>{{ getSceneDirectSceneId() || "未指定场景" }} · {{ formatShotInputMode(forms.shotInputMode) }} ·
+                {{ normalizeShotDuration(forms.shotDuration) }} 秒</small>
+            </div>
+
+            <div v-if="selectedSceneDirectPackage?.positive" class="meta-panel">
+              <div class="meta-row">
+                <span>参考素材数量</span>
+                <strong>{{ selectedSceneDirectPackage.media_references?.length || selectedSceneDirectPackage.reference_images?.length || 0 }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>参考图片</span>
+                <strong>{{ selectedSceneDirectPackage.reference_images?.length || 0 }}</strong>
+              </div>
+              <div class="meta-row meta-row-wide">
+                <span>场景级提示词预览</span>
+                <strong class="prompt-preview">{{ selectedSceneDirectPackage.positive }}</strong>
+              </div>
+            </div>
+
+            <div v-if="selectedSceneDirectPackage?.script_context" class="meta-panel">
+              <div class="meta-row">
+                <span>剧集标题</span>
+                <strong>{{ selectedSceneDirectPackage.script_context.episode_title || "暂无" }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>场景位置</span>
+                <strong>{{ selectedSceneDirectPackage.script_context.scene_location || "暂无" }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>场景时间</span>
+                <strong>{{ selectedSceneDirectPackage.script_context.scene_time || "暂无" }}</strong>
+              </div>
+              <div class="meta-row meta-row-wide">
+                <span>场景摘要</span>
+                <strong>{{ selectedSceneDirectPackage.script_context.scene_summary || "暂无" }}</strong>
+              </div>
+              <div class="meta-row meta-row-wide">
+                <span>节拍大纲</span>
+                <strong
+                  class="prompt-preview">{{ (selectedSceneDirectPackage.script_context.beat_outline || []).join("\n") || "暂无" }}</strong>
+              </div>
+              <div class="meta-row meta-row-wide">
+                <span>剧本原文摘录</span>
+                <strong
+                  class="prompt-preview">{{ selectedSceneDirectPackage.script_context.raw_script_excerpt || "暂无" }}</strong>
+              </div>
+            </div>
+
+            <div v-if="(selectedSceneDirectPackage?.script_context?.shot_outlines || []).length"
+              class="mini-list direct-beat-list">
+              <div v-for="item in selectedSceneDirectPackage.script_context.shot_outlines"
+                :key="`scene-beat-${item.index}`" class="mini-card">
+                <div class="item-body">
+                  <strong>节拍 {{ item.index }}</strong>
+                  <small>{{ formatReadableField(item.description) }}</small>
+                  <small>镜头建议：{{ formatReadableField(item.camera_summary) }}</small>
+                  <small>情绪：{{ formatReadableField(item.emotion) }}</small>
+                  <small>剧情节拍：{{ formatReadableField(item.beat) }}</small>
+                  <small>对白：{{ formatReadableField(item.dialogue_excerpt) }}</small>
+                </div>
+              </div>
+            </div>
+          </template>
 
           <div class="mini-list">
             <div v-for="item in state.jobs" :key="item.id" class="mini-card selectable"
@@ -2876,6 +4283,12 @@ onMounted(boot);
               <div class="item-body" @click="state.selectedJobId = item.id">
                 <strong>{{ item.id }}</strong>
                 <span>{{ formatStatus(item.status) }}</span>
+                <small>{{ formatSeedanceMode(getJobSeedanceSummary(item).mode) }} ·
+                  {{ item.provider?.model || "doubao-seedance-2-0-260128" }}</small>
+                <small>输出：{{ getJobSeedanceSummary(item).ratio }} · {{ getJobSeedanceSummary(item).resolution }} ·
+                  {{ formatJobOutputSummary(item) }}</small>
+                <small>素材：{{ formatJobReferenceSummary(item) }} ·
+                  {{ getJobSeedanceSummary(item).returnLastFrame ? "回传尾帧" : "不回传尾帧" }}</small>
                 <small>关联快照：{{ item.snapshot_id || "暂无" }}</small>
               </div>
               <div class="item-actions">
@@ -2889,6 +4302,54 @@ onMounted(boot);
               </div>
             </div>
             <div v-if="!state.jobs.length" class="empty-state">当前还没有任务草稿。</div>
+          </div>
+
+          <div class="panel-header sub-panel-header">
+            <div>
+              <p class="panel-kicker">快照列表</p>
+              <h3>本地快照</h3>
+            </div>
+          </div>
+
+          <div class="mini-list">
+            <div v-for="item in state.snapshots" :key="item.id" class="mini-card selectable"
+              :class="{ active: item.id === state.selectedSnapshotId }">
+              <div class="item-body" @click="handleOpenSnapshot(item)">
+                <strong>{{ item.id }}</strong>
+                <span>{{ item.storyboard_id }} · {{ item.shot_id }}</span>
+                <small>{{ formatSnapshotSource(item) }}</small>
+                <small>图片 {{ item.resolved_assets?.images?.length || 0 }}</small>
+              </div>
+              <div class="item-actions">
+                <el-button class="action-button ghost compact-button" @click.stop="handleOpenSnapshot(item)">
+                  查看
+                </el-button>
+                <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteSnapshot"
+                  @click.stop="handleDeleteSnapshot(item)">
+                  {{ loading.deleteSnapshot ? "删除中..." : "删除" }}
+                </el-button>
+              </div>
+            </div>
+            <div v-if="!state.snapshots.length" class="empty-state">当前还没有本地快照。</div>
+          </div>
+
+          <div v-if="state.selectedSnapshot && !selectedJobComputed" class="meta-panel">
+            <div class="meta-row">
+              <span>当前快照</span>
+              <strong>{{ state.selectedSnapshot.id }}</strong>
+            </div>
+            <div class="meta-row">
+              <span>所属分镜板 / 镜头</span>
+              <strong>{{ formatSnapshotSource(state.selectedSnapshot) }}</strong>
+            </div>
+            <div class="meta-row">
+              <span>引用图片数量</span>
+              <strong>{{ selectedSnapshotImageCount }}</strong>
+            </div>
+            <div class="meta-row">
+              <span>镜头卡路径</span>
+              <strong>{{ state.selectedSnapshot.inputs?.shot_card_path || "暂无" }}</strong>
+            </div>
           </div>
 
           <div v-if="selectedJobComputed" class="subsection">
@@ -2930,23 +4391,45 @@ onMounted(boot);
                 <strong>{{ selectedJobComputed.provider?.model || "暂未配置" }}</strong>
               </div>
               <div class="meta-row">
-                <span>提交方式</span>
-                <strong>{{ formatSubmitMode(selectedJobComputed.provider?.submit_mode) }}</strong>
+                <span>任务接口</span>
+                <strong>{{ formatJobApiKind(selectedJobComputed.provider) }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>输入模式</span>
+                <strong>{{ selectedJobRequestSummary.modeLabel }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>图像引用</span>
+                <strong>{{ selectedJobRequestSummary.imageCount }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>输出规格</span>
+                <strong>{{ selectedJobRequestSummary.ratio }} · {{ selectedJobRequestSummary.resolution }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>时长 / 数量</span>
+                <strong>{{ selectedJobRequestSummary.duration || "未设置" }} 秒 · {{ selectedJobRequestSummary.count }}
+                  条</strong>
+              </div>
+              <div class="meta-row">
+                <span>音频 / 尾帧</span>
+                <strong>{{ selectedJobRequestSummary.hasAudio ? "有声" : "无声" }} ·
+                  {{ selectedJobRequestSummary.returnLastFrame ? "回传尾帧" : "不回传尾帧" }}</strong>
               </div>
               <div class="meta-row">
                 <span>远端任务 ID</span>
                 <strong>{{ selectedJobComputed.remote?.task_id || "暂无" }}</strong>
               </div>
               <div class="meta-row">
-                <span>远端响应文件</span>
+                <span>任务响应快照</span>
                 <strong>{{ selectedJobComputed.remote?.raw_response_path || "暂无" }}</strong>
               </div>
               <div class="meta-row">
-                <span>视频文件</span>
+                <span>结果视频</span>
                 <strong>{{ selectedJobComputed.result?.video_path || "暂无" }}</strong>
               </div>
               <div class="meta-row">
-                <span>封面文件</span>
+                <span>结果封面</span>
                 <strong>{{ selectedJobComputed.result?.cover_path || "暂无" }}</strong>
               </div>
               <div class="meta-row">
@@ -2962,23 +4445,15 @@ onMounted(boot);
               </div>
               <div class="meta-row">
                 <span>所属分镜板 / 镜头</span>
-                <strong>{{ state.selectedSnapshot.storyboard_id }} · {{ state.selectedSnapshot.shot_id }}</strong>
+                <strong>{{ formatSnapshotSource(state.selectedSnapshot) }}</strong>
               </div>
               <div class="meta-row">
                 <span>引用图片数量</span>
                 <strong>{{ selectedSnapshotImageCount }}</strong>
               </div>
               <div class="meta-row">
-                <span>引用视频数量</span>
-                <strong>{{ selectedSnapshotVideoCount }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>引用音频数量</span>
-                <strong>{{ selectedSnapshotAudioCount }}</strong>
-              </div>
-              <div class="meta-row">
                 <span>镜头卡路径</span>
-                <strong>{{ state.selectedSnapshot.inputs?.shot_card_path || "暂无" }}</strong>
+                <strong>{{ state.selectedSnapshot.inputs?.shot_card_path || state.selectedSnapshot.inputs?.scene_card_path || "暂无" }}</strong>
               </div>
               <div class="meta-row">
                 <span>角色文件数量</span>
@@ -3011,7 +4486,7 @@ onMounted(boot);
             </div>
 
             <div class="form-stack">
-              <label class="code-label">提交请求体</label>
+              <label class="code-label">Seedance Request Body</label>
               <el-input :model-value="selectedJobRequestText" class="field-textarea code-textarea job-code"
                 type="textarea" resize="vertical" :autosize="{ minRows: 8, maxRows: 16 }" readonly />
             </div>
@@ -3019,7 +4494,7 @@ onMounted(boot);
             <div
               v-if="selectedJobComputed.remote?.raw_response_path || Object.keys(selectedJobComputed.remote?.raw_response || {}).length"
               class="form-stack">
-              <label class="code-label">远端返回</label>
+              <label class="code-label">Seedance Response</label>
               <el-input :model-value="selectedJobResponseText" class="field-textarea code-textarea job-code"
                 type="textarea" resize="vertical" :autosize="{ minRows: 8, maxRows: 16 }" readonly />
             </div>
@@ -3202,6 +4677,19 @@ h3 {
   max-width: 760px;
 }
 
+.view-switch {
+  flex-shrink: 0;
+}
+
+.storyboard-mode-switch {
+  flex-shrink: 0;
+}
+
+.readable-script-view {
+  display: grid;
+  gap: 12px;
+}
+
 .status-panel,
 .panel {
   border: 1px solid var(--ui-line);
@@ -3257,7 +4745,7 @@ h3 {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(320px, 380px);
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(420px, 480px);
   gap: var(--ui-gap);
   align-items: start;
 }
@@ -3407,6 +4895,10 @@ h3 {
   flex-wrap: wrap;
 }
 
+.sub-panel-header {
+  margin-top: 14px;
+}
+
 .panel-header>div {
   display: grid;
   gap: 4px;
@@ -3528,6 +5020,36 @@ h3 {
 
 .inline-shot-media-panel {
   padding: 12px;
+}
+
+.story-binding-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(116, 255, 82, 0.12);
+  background:
+    radial-gradient(circle at top right, rgba(116, 255, 82, 0.08), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.018)),
+    rgba(255, 255, 255, 0.024);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 24px rgba(0, 0, 0, 0.14);
+}
+
+.story-binding-header {
+  display: grid;
+  gap: 4px;
+}
+
+.story-binding-header strong {
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.story-binding-header small {
+  color: rgba(237, 242, 247, 0.68);
+  line-height: 1.55;
 }
 
 .shot-media-header {
@@ -3975,6 +5497,25 @@ h3 {
   min-width: 0;
   cursor: pointer;
   flex: 1;
+}
+
+.script-shot-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.script-shot-actions .action-button.el-button {
+  min-height: 30px;
+}
+
+.direct-beat-list {
+  margin-top: 8px;
+}
+
+.mode-placeholder-card {
+  margin-top: 12px;
 }
 
 .list-card strong,

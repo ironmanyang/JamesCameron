@@ -56,8 +56,8 @@ def _get_deepseek_settings() -> tuple[str, str, str]:
     api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
         raise ValueError("缺少 DEEPSEEK_API_KEY 配置")
-    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
-    model = os.getenv("DEEPSEEK_SCENE_MODEL", os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-chat")).strip()
+    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://www.packyapi.com/v1").rstrip("/")
+    model = os.getenv("DEEPSEEK_SCENE_MODEL", os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-v4-pro")).strip()
     return api_key, base_url, model
 
 
@@ -438,7 +438,7 @@ def generate_scene_assets(
             "output_compression": _get_scene_image_output_compression(),
             "deepseek_model": os.getenv(
                 "DEEPSEEK_SCENE_MODEL",
-                os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-chat"),
+                os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-v4-pro"),
             ).strip(),
             "version_dir": str(version_dir.relative_to(series_root)).replace("\\", "/"),
             "layout_mode": "single_sheet",

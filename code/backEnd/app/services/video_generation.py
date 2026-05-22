@@ -7,10 +7,27 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.storage.common import relative_to_series_root, utc_now_iso, write_bytes_atomic
+from app.storage.common import relative_to_series_root, write_bytes_atomic
 from app.storage.job_store import create_job, get_job, save_job_remote_response, update_job
 from app.storage.series_store import get_series_path
 from app.storage.snapshot_store import get_snapshot
+
+
+SEEDANCE_RATIO_VALUES = {"21:9", "1:1", "16:9", "3:4", "4:3", "9:16", "adaptive"}
+SEEDANCE_RESOLUTION_VALUES = {"480p", "720p", "1080p"}
+SEEDANCE_READY_STATUSES = {"succeeded"}
+SEEDANCE_FAILED_STATUSES = {"failed", "error", "cancelled", "canceled", "rejected"}
+
+
+def _clean_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _to_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _get_provider_defaults() -> dict[str, Any]:
@@ -18,31 +35,22 @@ def _get_provider_defaults() -> dict[str, Any]:
         "name": os.getenv("VIDEO_PROVIDER_NAME", "doubao-seedance-2-0").strip() or "doubao-seedance-2-0",
         "model": os.getenv("VIDEO_PROVIDER_MODEL", "doubao-seedance-2-0-260128").strip() or "doubao-seedance-2-0-260128",
         "submit_mode": os.getenv("VIDEO_PROVIDER_SUBMIT_MODE", "generic_http").strip() or "generic_http",
+        "api_kind": "ark_content_generation_tasks",
         "base_url": os.getenv("VIDEO_PROVIDER_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3").strip()
         or "https://ark.cn-beijing.volces.com/api/v3",
         "path": os.getenv("VIDEO_PROVIDER_PATH", "/contents/generations/tasks").strip() or "/contents/generations/tasks",
-        "api_key": os.getenv("VIDEO_PROVIDER_API_KEY", "").strip(),
-        "timeout_seconds": int(os.getenv("VIDEO_PROVIDER_TIMEOUT_SECONDS", "300")),
         "status_path": os.getenv("VIDEO_PROVIDER_STATUS_PATH", "/contents/generations/tasks/{task_id}").strip()
         or "/contents/generations/tasks/{task_id}",
-        "status_method": os.getenv("VIDEO_PROVIDER_STATUS_METHOD", "GET").strip().upper() or "GET",
-        "result_status_path": os.getenv("VIDEO_PROVIDER_RESULT_STATUS_PATH", "status").strip() or "status",
-        "result_video_url_path": os.getenv("VIDEO_PROVIDER_RESULT_VIDEO_URL_PATH", "content.video_url").strip()
-        or "content.video_url",
-        "result_cover_url_path": os.getenv("VIDEO_PROVIDER_RESULT_COVER_URL_PATH", "content.cover_url").strip()
-        or "content.cover_url",
-        "ready_values": os.getenv("VIDEO_PROVIDER_READY_VALUES", "succeeded,completed,success,finished,done,ready").strip(),
-        "failed_values": os.getenv("VIDEO_PROVIDER_FAILED_VALUES", "failed,error,cancelled,canceled,rejected").strip(),
+        "api_key": os.getenv("VIDEO_PROVIDER_API_KEY", "").strip(),
+        "timeout_seconds": _to_int(os.getenv("VIDEO_PROVIDER_TIMEOUT_SECONDS", "300"), 300),
         "download_assets": os.getenv("VIDEO_PROVIDER_DOWNLOAD_ASSETS", "true").strip().lower() not in {"0", "false", "no"},
     }
 
 
 def _merge_provider_settings(override: dict[str, Any] | None = None) -> dict[str, Any]:
-    defaults = _get_provider_defaults()
-    override = override or {}
-    merged = dict(defaults)
-    for key, value in override.items():
-        if value is not None and value != "":
+    merged = dict(_get_provider_defaults())
+    for key, value in (override or {}).items():
+        if value not in (None, ""):
             merged[key] = value
     return merged
 
@@ -51,19 +59,182 @@ def _job_provider_payload(provider: dict[str, Any], request_body: dict[str, Any]
     return {
         "name": provider.get("name", ""),
         "model": provider.get("model", ""),
-        "submit_mode": provider.get("submit_mode", "manual"),
+        "submit_mode": provider.get("submit_mode", "generic_http"),
+        "api_kind": provider.get("api_kind", "ark_content_generation_tasks"),
         "base_url": provider.get("base_url", ""),
         "path": provider.get("path", "/"),
         "status_path": provider.get("status_path", ""),
-        "status_method": provider.get("status_method", "GET"),
-        "result_status_path": provider.get("result_status_path", "status"),
-        "result_video_url_path": provider.get("result_video_url_path", "video_url"),
-        "result_cover_url_path": provider.get("result_cover_url_path", "cover_url"),
-        "ready_values": provider.get("ready_values", ""),
-        "failed_values": provider.get("failed_values", ""),
+        "timeout_seconds": provider.get("timeout_seconds", 300),
         "download_assets": provider.get("download_assets", True),
         "request_body": request_body,
     }
+
+
+def _normalize_seedance_mode(value: Any) -> str:
+    mode = _clean_text(value) or "reference_image"
+    if mode == "first_frame":
+        return "first_last_frame"
+    if mode in {"text_only", "reference_image", "first_last_frame"}:
+        return mode
+    return "reference_image"
+
+
+def _normalize_seedance_ratio(value: Any) -> str:
+    ratio = _clean_text(value) or "16:9"
+    if ratio not in SEEDANCE_RATIO_VALUES:
+        raise ValueError(f"不支持的视频比例：{ratio}")
+    return ratio
+
+
+def _normalize_seedance_resolution(value: Any) -> str:
+    resolution = _clean_text(value) or "1080p"
+    if resolution not in SEEDANCE_RESOLUTION_VALUES:
+        raise ValueError(f"不支持的分辨率：{resolution}")
+    return resolution
+
+
+def _normalize_seedance_duration(value: Any) -> int:
+    duration = _to_int(value, 5)
+    if duration < 1 or duration > 15:
+        raise ValueError(f"视频时长必须在 1-15 秒之间，当前为 {duration}")
+    return duration
+
+
+def _normalize_seedance_count(value: Any) -> int:
+    count = _to_int(value, 1)
+    if count < 1 or count > 4:
+        raise ValueError(f"生成数量必须在 1-4 条之间，当前为 {count}")
+    return count
+
+
+def _normalize_seedance_watermark(value: Any) -> bool:
+    return bool(value)
+
+
+def _normalize_seedance_generate_audio(value: Any) -> bool:
+    return bool(value)
+
+
+def _collect_media_references(prompt_package: dict[str, Any]) -> list[dict[str, Any]]:
+    media_references = prompt_package.get("media_references") or []
+    if media_references:
+        return [dict(item) for item in media_references if isinstance(item, dict)]
+
+    return [
+        {
+            "type": "image",
+            "path": image_path,
+            "role": "reference_image",
+            "source_kind": "legacy",
+            "source_id": "",
+            "source_name": "",
+        }
+        for image_path in (prompt_package.get("reference_images") or [])
+        if _clean_text(image_path)
+    ]
+
+
+def _infer_seedance_mode(
+    video_payload: dict[str, Any],
+    prompt_package: dict[str, Any],
+    media_references: list[dict[str, Any]],
+) -> str:
+    configured_mode = _normalize_seedance_mode(
+        video_payload.get("mode") or ((prompt_package.get("assembled_from") or {}).get("mode", ""))
+    )
+    if configured_mode in {"text_only", "reference_image", "first_last_frame"}:
+        return configured_mode
+
+    roles = {_clean_text(item.get("role", "")) for item in media_references}
+    if "first_frame" in roles or "last_frame" in roles:
+        return "first_last_frame"
+    if any(_clean_text(item.get("path", "")) for item in media_references):
+        return "reference_image"
+    return "text_only"
+
+
+def _build_seedance_content(
+    *,
+    prompt_text: str,
+    mode: str,
+    media_references: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    content: list[dict[str, Any]] = [{"type": "text", "text": prompt_text}]
+    image_references = [item for item in media_references if _clean_text(item.get("type", "")).lower() == "image"]
+
+    if mode == "text_only":
+        return content
+
+    if mode == "reference_image":
+        for item in image_references:
+            path = _clean_text(item.get("path", ""))
+            if not path:
+                continue
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": path,
+                    },
+                }
+            )
+        return content
+
+    if mode == "first_last_frame":
+        first_frame = next((item for item in image_references if _clean_text(item.get("role", "")) == "first_frame"), None)
+        last_frame = next((item for item in image_references if _clean_text(item.get("role", "")) == "last_frame"), None)
+        if first_frame is None:
+            raise ValueError("首尾帧生成模式缺少首帧图片")
+
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": _clean_text(first_frame.get("path", "")),
+                },
+                "role": "first_frame",
+            }
+        )
+
+        if last_frame is not None and _clean_text(last_frame.get("path", "")):
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": _clean_text(last_frame.get("path", "")),
+                    },
+                    "role": "last_frame",
+                }
+            )
+
+        return content
+
+    raise ValueError(f"不支持的 Seedance 输入模式：{mode}")
+
+
+def _build_seedance_request_body(provider: dict[str, Any], prompt_package: dict[str, Any]) -> dict[str, Any]:
+    video_payload = prompt_package.get("video_payload") or {}
+    media_references = _collect_media_references(prompt_package)
+    prompt_text = _clean_text(video_payload.get("prompt") or prompt_package.get("positive", ""))
+    if not prompt_text:
+        raise ValueError("镜头包缺少可提交的提示词")
+
+    mode = _infer_seedance_mode(video_payload, prompt_package, media_references)
+    request_body = {
+        "model": _clean_text(provider.get("model", "")),
+        "content": _build_seedance_content(prompt_text=prompt_text, mode=mode, media_references=media_references),
+        "ratio": _normalize_seedance_ratio(video_payload.get("ratio") or video_payload.get("aspect_ratio", "")),
+        "resolution": _normalize_seedance_resolution(video_payload.get("resolution", "")),
+        "duration": _normalize_seedance_duration(video_payload.get("duration") or video_payload.get("duration_seconds", 5)),
+        "count": _normalize_seedance_count(video_payload.get("count", 1)),
+        "generate_audio": _normalize_seedance_generate_audio(video_payload.get("generate_audio", False)),
+        "watermark": _normalize_seedance_watermark(video_payload.get("watermark", False)),
+    }
+
+    if mode == "first_last_frame":
+        request_body["return_last_frame"] = True
+
+    return request_body
 
 
 def build_video_request_from_snapshot(series_slug: str, snapshot_id: str, provider_override: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -73,73 +244,7 @@ def build_video_request_from_snapshot(series_slug: str, snapshot_id: str, provid
 
     provider = _merge_provider_settings(provider_override)
     prompt_package = ((snapshot.get("inputs") or {}).get("prompt_package") or {})
-    video_payload = prompt_package.get("video_payload") or {}
-    media_references = prompt_package.get("media_references") or [
-        {
-            "type": "image",
-            "path": image_path,
-            "role": "reference_image",
-        }
-        for image_path in (prompt_package.get("reference_images") or [])
-        if str(image_path).strip()
-    ]
-
-    content: list[dict[str, Any]] = []
-    prompt_text = str(video_payload.get("prompt") or prompt_package.get("positive", "")).strip()
-    if prompt_text:
-        content.append(
-            {
-                "type": "text",
-                "text": prompt_text,
-            }
-        )
-
-    for item in media_references:
-        media_type = str(item.get("type", "")).strip().lower()
-        media_path = str(item.get("path", "")).strip()
-        if not media_path:
-            continue
-        role = str(item.get("role", "")).strip()
-        if media_type == "image":
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": media_path,
-                    },
-                    "role": role or "reference_image",
-                }
-            )
-        elif media_type == "video":
-            content.append(
-                {
-                    "type": "video_url",
-                    "video_url": {
-                        "url": media_path,
-                    },
-                    "role": role or "reference_video",
-                }
-            )
-        elif media_type == "audio":
-            content.append(
-                {
-                    "type": "audio_url",
-                    "audio_url": {
-                        "url": media_path,
-                    },
-                    "role": role or "reference_audio",
-                }
-            )
-
-    request_body = {
-        "model": provider.get("model", ""),
-        "content": content,
-        "ratio": video_payload.get("ratio") or video_payload.get("aspect_ratio", ""),
-        "resolution": video_payload.get("resolution", ""),
-        "duration": video_payload.get("duration") or video_payload.get("duration_seconds", 5),
-        "generate_audio": bool(video_payload.get("generate_audio", False)),
-        "watermark": bool(video_payload.get("watermark", False)),
-    }
+    request_body = _build_seedance_request_body(provider, prompt_package)
 
     return {
         "provider": provider,
@@ -149,14 +254,14 @@ def build_video_request_from_snapshot(series_slug: str, snapshot_id: str, provid
 
 def _provider_headers(provider: dict[str, Any]) -> dict[str, str]:
     headers = {"Content-Type": "application/json"}
-    api_key = str(provider.get("api_key", "")).strip()
+    api_key = _clean_text(provider.get("api_key", ""))
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     return headers
 
 
 def _is_remote_media_url(value: str) -> bool:
-    normalized = str(value or "").strip().lower()
+    normalized = _clean_text(value).lower()
     return normalized.startswith("http://") or normalized.startswith("https://") or normalized.startswith("asset://") or normalized.startswith("data:")
 
 
@@ -176,26 +281,22 @@ def _materialize_request_body(series_slug: str, request_body: dict[str, Any]) ->
 
     for item in payload.get("content") or []:
         normalized_item = dict(item)
-        item_type = str(normalized_item.get("type", "")).strip()
-
-        if item_type == "image_url":
+        item_type = _clean_text(normalized_item.get("type", ""))
+        if item_type == "text":
+            text = _clean_text(normalized_item.get("text", ""))
+            if not text:
+                continue
+            normalized_item["text"] = text
+        elif item_type == "image_url":
             image_url = dict(normalized_item.get("image_url") or {})
-            url = str(image_url.get("url", "")).strip()
-            if url and not _is_remote_media_url(url):
+            url = _clean_text(image_url.get("url", ""))
+            if not url:
+                continue
+            if not _is_remote_media_url(url):
                 image_url["url"] = _file_to_data_url(series_slug, url, "image/jpeg")
             normalized_item["image_url"] = image_url
-        elif item_type == "audio_url":
-            audio_url = dict(normalized_item.get("audio_url") or {})
-            url = str(audio_url.get("url", "")).strip()
-            if url and not _is_remote_media_url(url):
-                audio_url["url"] = _file_to_data_url(series_slug, url, "audio/mpeg")
-            normalized_item["audio_url"] = audio_url
-        elif item_type == "video_url":
-            video_url = dict(normalized_item.get("video_url") or {})
-            url = str(video_url.get("url", "")).strip()
-            if url and not _is_remote_media_url(url):
-                raise ValueError("当前本地视频素材不能直接提交给 Seedance，请先提供公网 URL 或 asset:// 素材。")
-            normalized_item["video_url"] = video_url
+        else:
+            raise ValueError(f"当前仅支持向 Seedance 提交 text 和 image_url 内容，收到：{item_type or 'unknown'}")
 
         content_items.append(normalized_item)
 
@@ -207,31 +308,6 @@ def _provider_url(base_url: str, path: str) -> str:
     cleaned_base = base_url.rstrip("/")
     cleaned_path = path if path.startswith("/") else f"/{path}"
     return f"{cleaned_base}{cleaned_path}"
-
-
-def _deep_get(payload: Any, dotted_path: str) -> Any:
-    if not dotted_path:
-        return None
-
-    current = payload
-    for part in dotted_path.split("."):
-        if isinstance(current, dict):
-            current = current.get(part)
-            continue
-        if isinstance(current, list):
-            try:
-                current = current[int(part)]
-            except (ValueError, IndexError):
-                return None
-            continue
-        return None
-    return current
-
-
-def _normalize_value_set(raw: Any) -> set[str]:
-    if isinstance(raw, list):
-        return {str(item).strip().lower() for item in raw if str(item).strip()}
-    return {item.strip().lower() for item in str(raw or "").split(",") if item.strip()}
 
 
 def _guess_extension(url: str, default_extension: str) -> str:
@@ -270,9 +346,9 @@ def _download_asset_to_series_output(
     return relative_to_series_root(absolute_path, series_root)
 
 
-def _submit_generic_http(provider: dict[str, Any], request_body: dict[str, Any]) -> dict[str, Any]:
-    base_url = str(provider.get("base_url", "")).rstrip("/")
-    path = str(provider.get("path", "/")).strip() or "/"
+def _submit_seedance_task(provider: dict[str, Any], request_body: dict[str, Any]) -> dict[str, Any]:
+    base_url = _clean_text(provider.get("base_url", "")).rstrip("/")
+    path = _clean_text(provider.get("path", "/")) or "/"
     if not base_url:
         raise ValueError("缺少 VIDEO_PROVIDER_BASE_URL 配置")
 
@@ -285,70 +361,55 @@ def _submit_generic_http(provider: dict[str, Any], request_body: dict[str, Any])
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
-        raise ValueError(f"视频供应商请求失败：{response.text}") from exc
+        raise ValueError(f"Seedance 提交失败：{response.text}") from exc
 
     return response.json() if response.content else {}
 
 
-def _fetch_generic_http_status(provider: dict[str, Any], task_id: str) -> dict[str, Any]:
-    base_url = str(provider.get("base_url", "")).rstrip("/")
+def _fetch_seedance_task_status(provider: dict[str, Any], task_id: str) -> dict[str, Any]:
+    base_url = _clean_text(provider.get("base_url", "")).rstrip("/")
     if not base_url:
         raise ValueError("缺少 VIDEO_PROVIDER_BASE_URL 配置")
     if not task_id:
         raise ValueError("任务远端 task_id 为空")
 
-    status_path = str(provider.get("status_path", "")).strip() or str(provider.get("path", "/")).strip() or "/"
-    status_method = str(provider.get("status_method", "GET")).strip().upper() or "GET"
-    if "{task_id}" in status_path:
-        resolved_path = status_path.replace("{task_id}", task_id)
-    elif status_method == "GET":
-        resolved_path = f"{status_path.rstrip('/')}/{task_id}"
-    else:
-        resolved_path = status_path
+    status_path = _clean_text(provider.get("status_path", "")) or _clean_text(provider.get("path", "/")) or "/"
+    resolved_path = status_path.replace("{task_id}", task_id) if "{task_id}" in status_path else f"{status_path.rstrip('/')}/{task_id}"
 
-    request_kwargs: dict[str, Any] = {
-        "headers": _provider_headers(provider),
-        "timeout": int(provider.get("timeout_seconds", 300)),
-    }
-    if status_method != "GET":
-        request_kwargs["json"] = {"task_id": task_id}
-
-    response = requests.request(
-        status_method,
+    response = requests.get(
         _provider_url(base_url, resolved_path),
-        **request_kwargs,
+        headers=_provider_headers(provider),
+        timeout=int(provider.get("timeout_seconds", 300)),
     )
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
-        raise ValueError(f"视频状态请求失败：{response.text}") from exc
+        raise ValueError(f"Seedance 状态查询失败：{response.text}") from exc
 
     return response.json() if response.content else {}
 
 
-def _extract_remote_state(provider: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
-    remote_status = str(_deep_get(payload, str(provider.get("result_status_path", "status"))) or "").strip()
-    ready_values = _normalize_value_set(provider.get("ready_values"))
-    failed_values = _normalize_value_set(provider.get("failed_values"))
+def _extract_seedance_remote_state(payload: dict[str, Any]) -> dict[str, Any]:
+    remote_status = _clean_text(payload.get("status", ""))
     normalized_status = remote_status.lower()
-
-    if normalized_status in ready_values:
+    if normalized_status in SEEDANCE_READY_STATUSES:
         local_status = "completed"
-    elif normalized_status in failed_values:
+    elif normalized_status in SEEDANCE_FAILED_STATUSES:
         local_status = "failed"
     else:
         local_status = "submitted"
 
+    content = payload.get("content") or {}
     return {
         "remote_status": remote_status,
         "local_status": local_status,
-        "video_url": str(_deep_get(payload, str(provider.get("result_video_url_path", "video_url"))) or "").strip(),
-        "cover_url": str(_deep_get(payload, str(provider.get("result_cover_url_path", "cover_url"))) or "").strip(),
+        "video_url": _clean_text(content.get("video_url", "")),
+        "cover_url": _clean_text(content.get("last_frame_url", "")) or _clean_text(content.get("cover_url", "")),
     }
 
 
 def _finalize_submitted_job(series_slug: str, job_id: str, remote_payload: dict[str, Any]) -> dict[str, Any]:
-    task_id = remote_payload.get("task_id") or remote_payload.get("id") or remote_payload.get("job_id") or ""
+    task_id = _clean_text(remote_payload.get("id") or remote_payload.get("task_id") or remote_payload.get("job_id") or "")
     raw_response_path = save_job_remote_response(series_slug, job_id, remote_payload)
     return update_job(
         series_slug,
@@ -437,7 +498,7 @@ def submit_video_job(series_slug: str, job_id: str, provider_override: dict[str,
 
     provider = _merge_provider_settings((job.get("provider") or {}))
     provider = _merge_provider_settings({**provider, **(provider_override or {})})
-    submit_mode = str(provider.get("submit_mode", "manual")).strip() or "manual"
+    submit_mode = _clean_text(provider.get("submit_mode", "generic_http")) or "generic_http"
 
     update_job(
         series_slug,
@@ -463,7 +524,7 @@ def submit_video_job(series_slug: str, job_id: str, provider_override: dict[str,
 
     try:
         resolved_request_body = _materialize_request_body(series_slug, request_body)
-        remote_payload = _submit_generic_http(provider, resolved_request_body)
+        remote_payload = _submit_seedance_task(provider, resolved_request_body)
         return _finalize_submitted_job(series_slug, job_id, remote_payload)
     except ValueError as exc:
         return _finalize_failed_job(
@@ -481,7 +542,7 @@ def refresh_video_job(series_slug: str, job_id: str, provider_override: dict[str
 
     provider = _merge_provider_settings((job.get("provider") or {}))
     provider = _merge_provider_settings({**provider, **(provider_override or {})})
-    submit_mode = str(provider.get("submit_mode", "manual")).strip() or "manual"
+    submit_mode = _clean_text(provider.get("submit_mode", "generic_http")) or "generic_http"
     if submit_mode != "generic_http":
         return update_job(
             series_slug,
@@ -495,10 +556,10 @@ def refresh_video_job(series_slug: str, job_id: str, provider_override: dict[str
         )
 
     remote = job.get("remote") or {}
-    task_id = str(remote.get("task_id", "")).strip()
+    task_id = _clean_text(remote.get("task_id", ""))
     try:
-        remote_payload = _fetch_generic_http_status(provider, task_id)
-        remote_state = _extract_remote_state(provider, remote_payload)
+        remote_payload = _fetch_seedance_task_status(provider, task_id)
+        remote_state = _extract_seedance_remote_state(remote_payload)
     except ValueError as exc:
         return _finalize_failed_job(
             series_slug,
@@ -555,7 +616,7 @@ def refresh_video_job(series_slug: str, job_id: str, provider_override: dict[str
                     url=remote_state["cover_url"],
                     output_subdir="images",
                     file_stem=f"{job_id}_cover",
-                    default_extension=".jpg",
+                    default_extension=".png",
                     provider=provider,
                 )
         except ValueError as exc:

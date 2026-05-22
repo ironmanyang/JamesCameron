@@ -240,6 +240,17 @@ export function createStoryboard(data) {
   });
 }
 
+export function updateStoryboard(seriesSlug, storyboardId, storyboardData) {
+  return request(`/api/storyboards/${storyboardId}`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      storyboard_data: storyboardData
+    })
+  });
+}
+
 export function deleteStoryboard(seriesSlug, storyboardId) {
   return request(`/api/storyboards/${storyboardId}?series_slug=${encodeURIComponent(seriesSlug)}`, {
     method: "DELETE"
@@ -291,6 +302,18 @@ export function assembleShotPackage(seriesSlug, storyboardId, shotId) {
   });
 }
 
+export function assembleScenePackage(seriesSlug, storyboardId, sceneId, scenePayload) {
+  return request(`/api/storyboards/${storyboardId}/assemble-scene-package`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      scene_id: sceneId,
+      scene_payload: scenePayload
+    })
+  });
+}
+
 export async function uploadShotMediaImages(seriesSlug, storyboardId, target, files, shotId = "") {
   const formData = new FormData();
   formData.append("series_slug", seriesSlug);
@@ -324,8 +347,26 @@ export function createSnapshot(data) {
   });
 }
 
+export function createSceneDirectSnapshot(data) {
+  return request("/api/snapshots/scene-direct", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(data)
+  });
+}
+
+export function listSnapshots(seriesSlug) {
+  return request(`/api/snapshots?series_slug=${encodeURIComponent(seriesSlug)}`);
+}
+
 export function getSnapshot(seriesSlug, snapshotId) {
   return request(`/api/snapshots/${snapshotId}?series_slug=${encodeURIComponent(seriesSlug)}`);
+}
+
+export function deleteSnapshot(seriesSlug, snapshotId) {
+  return request(`/api/snapshots/${snapshotId}?series_slug=${encodeURIComponent(seriesSlug)}`, {
+    method: "DELETE"
+  });
 }
 
 export function listJobs(seriesSlug) {

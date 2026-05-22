@@ -7,6 +7,16 @@ from app.storage.naming import next_numeric_id
 from app.storage.series_store import get_series, get_series_path, update_series_pointer
 
 
+DEFAULT_PRODUCTION_MODE = "shot_pipeline"
+SUPPORTED_PRODUCTION_MODES = {"shot_pipeline", "scene_direct"}
+DEFAULT_SHOT_STORY = {
+    "description": "",
+    "emotion": "",
+    "beat": "",
+    "raw_script_excerpt": "",
+}
+
+
 def get_storyboards_root(series_slug: str) -> Path:
     return get_series_path(series_slug) / "storyboards"
 
@@ -43,7 +53,7 @@ def get_storyboard(series_slug: str, storyboard_id: str) -> dict | None:
     path = get_storyboard_manifest_path(series_slug, storyboard_id)
     if not path.exists():
         return None
-    return read_json(path)
+    return _normalize_storyboard_manifest(read_json(path))
 
 
 def list_storyboards(series_slug: str) -> list[dict]:
@@ -55,7 +65,7 @@ def list_storyboards(series_slug: str) -> list[dict]:
     for child in root.iterdir():
         manifest_path = child / "storyboard.json"
         if child.is_dir() and manifest_path.exists():
-            items.append(read_json(manifest_path))
+            items.append(_normalize_storyboard_manifest(read_json(manifest_path)))
 
     items.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
     return items
@@ -101,7 +111,20 @@ def _next_storyboard_id(series_slug: str, episode_id: str) -> tuple[str, int]:
     return f"{prefix}_v{next_version:03d}", next_version
 
 
-def create_storyboard(series_slug: str, episode_id: str) -> dict:
+def normalize_storyboard_production_mode(value: str | None) -> str:
+    normalized = str(value or "").strip()
+    return normalized if normalized in SUPPORTED_PRODUCTION_MODES else DEFAULT_PRODUCTION_MODE
+
+
+def _normalize_storyboard_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(manifest or {})
+    payload["production_mode"] = normalize_storyboard_production_mode(payload.get("production_mode"))
+    payload.setdefault("scene_direct_config", {})
+    payload.setdefault("scene_direct_package", {})
+    return payload
+
+
+def create_storyboard(series_slug: str, episode_id: str, production_mode: str | None = None) -> dict:
     series = get_series(series_slug)
     if series is None:
         raise FileNotFoundError(series_slug)
@@ -120,11 +143,28 @@ def create_storyboard(series_slug: str, episode_id: str) -> dict:
         "created_at": now,
         "updated_at": now,
         "status": "draft",
+        "production_mode": normalize_storyboard_production_mode(production_mode),
+        "scene_direct_config": {},
+        "scene_direct_package": {},
         "shot_ids": [],
     }
     write_json_atomic(storyboard_dir / "storyboard.json", manifest)
     update_series_pointer(series_slug, "current_storyboard_id", storyboard_id)
     return manifest
+
+
+def save_storyboard(series_slug: str, storyboard_id: str, storyboard_data: dict[str, Any]) -> dict:
+    existing = get_storyboard(series_slug, storyboard_id)
+    if existing is None:
+        raise FileNotFoundError(storyboard_id)
+
+    merged = dict(existing)
+    merged.update(storyboard_data or {})
+    merged["id"] = storyboard_id
+    merged["production_mode"] = normalize_storyboard_production_mode(merged.get("production_mode"))
+    merged["updated_at"] = utc_now_iso()
+    write_json_atomic(get_storyboard_manifest_path(series_slug, storyboard_id), merged)
+    return merged
 
 
 def create_shot(
@@ -150,6 +190,7 @@ def create_shot(
             "scene_index": 0,
             "shot_index": 0,
         },
+        "story": dict(DEFAULT_SHOT_STORY),
         "dialogue": [],
         "media": {
             "mode": "reference_image",
@@ -157,13 +198,12 @@ def create_shot(
             "first_frame_path": "",
             "last_frame_path": "",
             "reference_image_paths": [],
-            "reference_video_paths": [],
-            "reference_audio_paths": [],
         },
         "visual": {
             "aspect_ratio": "16:9",
             "style": "cinematic realism",
             "resolution": "1080p",
+            "generation_count": 1,
             "shot_size": "wide",
             "camera_angle": "eye_level",
             "camera_movement": "static",
@@ -191,6 +231,10 @@ def create_shot(
         payload["storyboard_id"] = storyboard_id
         payload["scene_id"] = scene_id
         payload.setdefault("script_source", {"episode_id": storyboard["episode_id"], "scene_index": 0, "shot_index": 0})
+        payload["story"] = {
+            **DEFAULT_SHOT_STORY,
+            **((payload.get("story") or {}) if isinstance(payload.get("story"), dict) else {}),
+        }
         payload.setdefault("dialogue", [])
         payload.setdefault("media", {})
         payload.setdefault("characters", [])
@@ -222,6 +266,11 @@ def save_shot(series_slug: str, storyboard_id: str, shot_id: str, shot_data: dic
     merged.setdefault("scene_id", existing.get("scene_id", ""))
     merged.setdefault("characters", existing.get("characters", []))
     merged.setdefault("props", existing.get("props", []))
+    merged["story"] = {
+        **DEFAULT_SHOT_STORY,
+        **((existing.get("story") or {}) if isinstance(existing.get("story"), dict) else {}),
+        **((shot_data.get("story") or {}) if isinstance(shot_data.get("story"), dict) else {}),
+    }
     merged.setdefault("dialogue", existing.get("dialogue", []))
     merged.setdefault("media", existing.get("media", {}))
     merged.setdefault("visual", existing.get("visual", {}))

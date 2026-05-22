@@ -71,8 +71,8 @@ def _get_deepseek_settings() -> tuple[str, str, str]:
     api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
         raise ValueError("缺少 DEEPSEEK_API_KEY 配置")
-    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
-    model = os.getenv("DEEPSEEK_CHARACTER_MODEL", os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-chat")).strip()
+    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://www.packyapi.com/v1").rstrip("/")
+    model = os.getenv("DEEPSEEK_CHARACTER_MODEL", os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-v4-pro")).strip()
     return api_key, base_url, model
 
 
@@ -336,7 +336,7 @@ def _build_reference_subject_only_package(character: dict[str, Any], current_bib
     anchors = current_bible.get("anchors") or character.get("anchors") or {}
     bible = current_bible.get("bible") or {}
     return {
-        "summary": str(current_bible.get("summary", "")).strip() or "Based on uploaded reference image only.",
+        "summary": str(current_bible.get("summary", "")).strip(),
         "anchors": {
             "biology": str(anchors.get("biology", "")).strip(),
             "face": str(anchors.get("face", "")).strip(),
@@ -611,7 +611,7 @@ def generate_character_assets(
             "deepseek_model": (
                 os.getenv(
                     "DEEPSEEK_CHARACTER_MODEL",
-                    os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-chat"),
+                    os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-v4-pro"),
                 ).strip()
                 if resolved_mode == CHARACTER_GENERATION_MODE_REFERENCE_PLUS_TEXT
                 else ""

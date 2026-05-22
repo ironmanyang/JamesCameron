@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
+from app.services.scene_video_assembly import assemble_scene_direct_package
 from app.services.shot_assembly import assemble_shot_prompt_package
 from app.storage.common import relative_to_series_root, utc_now_iso, write_bytes_atomic
 from app.storage.series_store import get_series_path
@@ -18,6 +19,7 @@ from app.storage.storyboard_store import (
     get_storyboard_draft_shot_media_dir,
     list_shots,
     list_storyboards,
+    save_storyboard,
     save_shot,
 )
 
@@ -28,6 +30,12 @@ router = APIRouter(prefix="/api/storyboards", tags=["storyboards"])
 class CreateStoryboardRequest(BaseModel):
     series_slug: str = Field(min_length=1)
     episode_id: str = Field(min_length=1, max_length=32)
+    production_mode: str = Field(default="shot_pipeline", max_length=32)
+
+
+class SaveStoryboardRequest(BaseModel):
+    series_slug: str = Field(min_length=1)
+    storyboard_data: dict[str, Any]
 
 
 class CreateShotRequest(BaseModel):
@@ -45,6 +53,12 @@ class AssembleShotPackageRequest(BaseModel):
     series_slug: str = Field(min_length=1)
 
 
+class AssembleScenePackageRequest(BaseModel):
+    series_slug: str = Field(min_length=1)
+    scene_id: str = Field(min_length=1, max_length=120)
+    scene_payload: dict[str, Any] = Field(default_factory=dict)
+
+
 SHOT_IMAGE_UPLOAD_TARGETS = {"first_frame", "last_frame", "reference_images"}
 
 
@@ -56,7 +70,11 @@ async def list_storyboards_api(series_slug: str = Query(min_length=1)):
 @router.post("")
 async def create_storyboard_api(payload: CreateStoryboardRequest):
     try:
-        item = create_storyboard(payload.series_slug.strip(), payload.episode_id.strip())
+        item = create_storyboard(
+            payload.series_slug.strip(),
+            payload.episode_id.strip(),
+            payload.production_mode.strip(),
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="系列不存在") from exc
     return {"item": item}
@@ -129,6 +147,19 @@ async def get_storyboard_api(storyboard_id: str, series_slug: str = Query(min_le
     item = get_storyboard(series_slug.strip(), storyboard_id.strip())
     if item is None:
         raise HTTPException(status_code=404, detail="分镜板不存在")
+    return {"item": item}
+
+
+@router.put("/{storyboard_id}")
+async def save_storyboard_api(storyboard_id: str, payload: SaveStoryboardRequest):
+    try:
+        item = save_storyboard(
+            series_slug=payload.series_slug.strip(),
+            storyboard_id=storyboard_id.strip(),
+            storyboard_data=payload.storyboard_data,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="分镜板不存在") from exc
     return {"item": item}
 
 
@@ -209,4 +240,22 @@ async def assemble_shot_package_api(storyboard_id: str, shot_id: str, payload: A
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="镜头来源数据不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"item": item}
+
+
+@router.post("/{storyboard_id}/assemble-scene-package")
+async def assemble_scene_package_api(storyboard_id: str, payload: AssembleScenePackageRequest):
+    try:
+        item = assemble_scene_direct_package(
+            series_slug=payload.series_slug.strip(),
+            storyboard_id=storyboard_id.strip(),
+            scene_id=payload.scene_id.strip(),
+            scene_payload=payload.scene_payload,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="场景来源数据不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"item": item}
