@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -9,26 +9,33 @@ import {
   createEpisode,
   createScene,
   createSceneDirectSnapshot,
+  createShotBatch,
   createSeries,
   createShot,
   createSnapshot,
   createStoryboard,
   createVideoJobFromSnapshot,
+  clearShotBatches,
+  clearShots,
   deleteCharacter,
   deleteCharacterSourceImage,
   deleteEpisode,
   deleteJob,
+  deleteRemoteVideoTask,
   deleteSnapshot,
   deleteScene,
   deleteSeries,
   deleteShot,
+  deleteShotBatch,
   deleteStoryboard,
   generateCharacterAssets,
   generateSceneAssets,
   getCharacterBible,
   getHealth,
   getJob,
+  getRemoteVideoTask,
   getSnapshot,
+  getShotBatch,
   getParsedScript,
   getRawScript,
   getScenePromptPackage,
@@ -36,13 +43,18 @@ import {
   listEpisodes,
   listSnapshots,
   listJobs,
+  listRemoteVideoTasks,
   listScenes,
   listSeries,
   listShots,
+  listShotBatches,
   listStoryboards,
   refreshJob,
+  refreshShotBatch,
+  retryFailedShotBatch,
   saveParsedScript,
   saveRawScript,
+  submitShotBatch,
   submitJob,
   updateCharacter,
   updateEpisode,
@@ -109,6 +121,10 @@ let characterBibleRequestSeed = 0;
 let scenePackageRequestSeed = 0;
 let jobDetailRequestSeed = 0;
 let snapshotDetailRequestSeed = 0;
+let shotBatchRequestSeed = 0;
+let shotBatchDetailRequestSeed = 0;
+let remoteTaskRequestSeed = 0;
+let remoteTaskDetailRequestSeed = 0;
 
 const loading = reactive({
   boot: true,
@@ -151,9 +167,20 @@ const loading = reactive({
   importParsedShot: false,
   jobDetail: false,
   snapshotDetail: false,
+  shotBatches: false,
+  remoteTasks: false,
+  remoteTaskDetail: false,
   deleteJob: false,
+  deleteRemoteTask: false,
   deleteSnapshot: false,
   createSceneDirectTask: false,
+  createShotBatch: false,
+  deleteShotBatch: false,
+  clearShotBatches: false,
+  clearShots: false,
+  retryShotBatch: false,
+  submitShotBatch: false,
+  refreshShotBatch: false,
   submitJob: false,
   refreshJob: false
 });
@@ -344,23 +371,30 @@ const state = reactive({
   scenes: [],
   storyboards: [],
   shots: [],
+  shotBatches: [],
   snapshots: [],
   jobs: [],
+  remoteTasks: [],
   selectedSeriesSlug: "",
   selectedEpisodeId: "",
   selectedStoryboardId: "",
   selectedShotId: "",
+  selectedShotIds: [],
+  selectedShotBatchId: "",
   selectedCharacterId: "",
   selectedSceneId: "",
   selectedJobId: "",
   selectedSnapshotId: "",
+  selectedRemoteTaskId: "",
   selectedCharacterIds: [],
   rawScript: "",
   parsedScriptText: "",
   selectedCharacterBible: null,
   selectedScenePackage: null,
+  selectedShotBatch: null,
   selectedJob: null,
   selectedSnapshot: null,
+  selectedRemoteTask: null,
   assets: {
     characters: 0,
     scenes: 0,
@@ -400,6 +434,12 @@ const selectedStoryboardProductionMode = computed(() =>
 );
 const selectedSceneDirectPackage = computed(() => selectedStoryboard.value?.scene_direct_package || null);
 const selectedShot = computed(() => state.shots.find((item) => item.id === state.selectedShotId) || null);
+const selectedShotBatchComputed = computed(() => {
+  if (state.selectedShotBatch && state.selectedShotBatch.id === state.selectedShotBatchId) {
+    return state.selectedShotBatch;
+  }
+  return state.shotBatches.find((item) => item.id === state.selectedShotBatchId) || null;
+});
 const seriesListPanelLoading = computed(() => loading.boot || loading.series || loading.updateSeries || loading.deleteSeries);
 const seriesCreatePanelLoading = computed(() => loading.createSeries);
 const episodesPanelLoading = computed(
@@ -437,6 +477,7 @@ const storyboardConfigPanelLoading = computed(
     loading.createShot ||
     loading.updateShot ||
     loading.deleteShot ||
+    loading.clearShots ||
     loading.shotMediaUpload
 );
 const executionPanelLoading = computed(
@@ -445,7 +486,13 @@ const executionPanelLoading = computed(
     loading.sceneDirectPackage ||
     loading.createRender ||
     loading.createSceneDirectTask ||
-    loading.updateShot
+    loading.updateShot ||
+    loading.createShotBatch ||
+    loading.deleteShotBatch ||
+    loading.clearShotBatches ||
+    loading.retryShotBatch ||
+    loading.submitShotBatch ||
+    loading.refreshShotBatch
 );
 const storyboardListLoading = computed(() => loading.production && !filteredStoryboards.value.length);
 const storyboardDetailLoading = computed(
@@ -458,6 +505,7 @@ const storyboardDetailLoading = computed(
       loading.createShot ||
       loading.updateShot ||
       loading.deleteShot ||
+      loading.clearShots ||
       loading.shotMediaUpload ||
       loading.shotPackage ||
       loading.sceneDirectPackage ||
@@ -466,6 +514,19 @@ const storyboardDetailLoading = computed(
 );
 const jobsListLoading = computed(
   () => (loading.production && !state.jobs.length) || loading.deleteJob
+);
+const shotBatchesListLoading = computed(
+  () =>
+    loading.shotBatches ||
+    loading.createShotBatch ||
+    loading.deleteShotBatch ||
+    loading.clearShotBatches ||
+    loading.retryShotBatch ||
+    loading.submitShotBatch ||
+    loading.refreshShotBatch
+);
+const remoteTasksListLoading = computed(
+  () => loading.remoteTasks || loading.remoteTaskDetail || loading.deleteRemoteTask
 );
 const snapshotsListLoading = computed(
   () => (loading.production && !state.snapshots.length) || loading.deleteSnapshot
@@ -483,6 +544,14 @@ const selectedJobComputed = computed(() => {
     return state.selectedJob;
   }
   return state.jobs.find((item) => item.id === state.selectedJobId) || null;
+});
+const selectedRemoteTaskComputed = computed(() => {
+  const selectedTask = state.selectedRemoteTask;
+  const selectedTaskId = getRemoteTaskId(selectedTask);
+  if (selectedTask && selectedTaskId && selectedTaskId === state.selectedRemoteTaskId) {
+    return selectedTask;
+  }
+  return state.remoteTasks.find((item) => getRemoteTaskId(item) === state.selectedRemoteTaskId) || null;
 });
 const selectedShotPromptPackage = computed(() => selectedShot.value?.prompt_package || null);
 const selectedShotPromptVariants = computed(() => {
@@ -549,6 +618,17 @@ const selectedJobResponseText = computed(() =>
 );
 const selectedJobVideoUrl = computed(() => assetUrl(selectedJobComputed.value?.result?.video_path || ""));
 const selectedJobCoverUrl = computed(() => assetUrl(selectedJobComputed.value?.result?.cover_path || ""));
+const selectedRemoteTaskText = computed(() =>
+  JSON.stringify(selectedRemoteTaskComputed.value || {}, null, 2)
+);
+const selectedRemoteTaskVideoUrl = computed(() => {
+  const content = selectedRemoteTaskComputed.value?.content || {};
+  return String(content.video_url || content.url || "").trim();
+});
+const selectedRemoteTaskCoverUrl = computed(() => {
+  const content = selectedRemoteTaskComputed.value?.content || {};
+  return String(content.last_frame_url || content.cover_url || "").trim();
+});
 const selectedSnapshotImageCount = computed(
   () => state.selectedSnapshot?.resolved_assets?.images?.length || 0
 );
@@ -770,6 +850,113 @@ function syncAssetCounts() {
     snapshots: state.snapshots.length,
     jobs: state.jobs.length
   };
+}
+
+function getJobById(jobId) {
+  const normalizedJobId = String(jobId || "").trim();
+  if (!normalizedJobId) {
+    return null;
+  }
+  if (state.selectedJob?.id === normalizedJobId) {
+    return state.selectedJob;
+  }
+  return state.jobs.find((item) => item.id === normalizedJobId) || null;
+}
+
+function getRemoteTaskId(task) {
+  if (!task || typeof task !== "object") {
+    return "";
+  }
+  return String(task.id || task.task_id || task.job_id || "").trim();
+}
+
+function getRemoteTaskIdByJob(job) {
+  return String(job?.remote?.task_id || "").trim();
+}
+
+function getLinkedRemoteTaskIds(jobs = state.jobs) {
+  return [...new Set((jobs || []).map((item) => getRemoteTaskIdByJob(item)).filter(Boolean))];
+}
+
+function getRemoteTaskLinkedJob(task) {
+  const taskId = getRemoteTaskId(task);
+  if (!taskId) {
+    return null;
+  }
+  if (getRemoteTaskIdByJob(state.selectedJob) === taskId) {
+    return state.selectedJob;
+  }
+  return state.jobs.find((item) => getRemoteTaskIdByJob(item) === taskId) || null;
+}
+
+function getRemoteTaskStatus(task) {
+  return String(task?.status || task?.state || "").trim() || "unknown";
+}
+
+function isShotSelectedForBatch(shotId) {
+  return state.selectedShotIds.includes(String(shotId || "").trim());
+}
+
+function toggleShotSelection(shotId, checked = null) {
+  const normalizedShotId = String(shotId || "").trim();
+  if (!normalizedShotId) {
+    return;
+  }
+
+  const hasShot = state.selectedShotIds.includes(normalizedShotId);
+  const shouldSelect = typeof checked === "boolean" ? checked : !hasShot;
+  if (shouldSelect && !hasShot) {
+    state.selectedShotIds = [...state.selectedShotIds, normalizedShotId];
+  } else if (!shouldSelect && hasShot) {
+    state.selectedShotIds = state.selectedShotIds.filter((item) => item !== normalizedShotId);
+  }
+}
+
+function selectAllShotsForBatch() {
+  state.selectedShotIds = state.shots.map((item) => item.id).filter(Boolean);
+}
+
+function clearShotSelection() {
+  state.selectedShotIds = [];
+}
+
+function formatShotBatchCounts(batch) {
+  const item = batch || {};
+  const totalCount = Number(item.total_count || 0) || 0;
+  const successCount = Number(item.success_count || 0) || 0;
+  const failedCount = Number(item.failed_count || 0) || 0;
+  const pendingCount = Number(item.pending_count || 0) || 0;
+  const processingCount = Number(item.processing_count || 0) || 0;
+  return `${successCount}/${totalCount} 成功 · ${failedCount} 失败 · ${pendingCount + processingCount} 待处理`;
+}
+
+function formatShotBatchProgress(batch) {
+  const item = batch || {};
+  const totalCount = Number(item.total_count || 0) || 0;
+  const successCount = Number(item.success_count || 0) || 0;
+  if (!totalCount) {
+    return "0%";
+  }
+  return `${Math.round((successCount / totalCount) * 100)}%`;
+}
+
+function getShotBatchSubmittableCount(batch) {
+  return (batch?.items || []).filter((item) => ["draft_ready", "failed"].includes(String(item?.status || "").trim())).length;
+}
+
+function getBatchCompletedItems(batch) {
+  return (batch?.items || []).filter((item) => {
+    const job = getJobById(item.job_id);
+    return Boolean(job?.result?.video_path || job?.result?.cover_path);
+  });
+}
+
+function getBatchJobVideoUrl(jobId) {
+  return assetUrl(getJobById(jobId)?.result?.video_path || "");
+}
+
+function getBatchJobCoverUrl(jobId) {
+  return assetUrl(getJobById(jobId)?.result?.cover_path || "");
 }
 
 function formatHealth(value) {
@@ -1850,10 +2037,27 @@ async function handleImportReadableShot(scene, shot, sceneIndex, shotIndex) {
     return;
   }
 
+  loading.importParsedShot = true;
+  try {
+    const result = await importReadableShotDraft(scene, shot, sceneIndex, shotIndex);
+    await loadProductionData(state.selectedSeriesSlug);
+    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, result.item.id);
+    state.selectedSceneId = result.sceneId;
+    state.selectedShotId = result.item.id;
+    setNotice(
+      `已导入镜头卡草稿：${result.item.id}${result.unmatchedNames.length ? `，未匹配角色：${result.unmatchedNames.join("、")}` : ""}`
+    );
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.importParsedShot = false;
+  }
+}
+
+async function importReadableShotDraft(scene, shot, sceneIndex, shotIndex) {
   const sceneId = resolveParsedSceneId(scene);
   if (!sceneId) {
-    setError("未匹配到可用场景，请先创建或选择对应场景");
-    return;
+    throw new Error("未匹配到可用场景，请先创建或选择对应场景");
   }
 
   const { matchedIds, unmatchedNames } = resolveParsedCharacterIds(shot);
@@ -1864,45 +2068,107 @@ async function handleImportReadableShot(scene, shot, sceneIndex, shotIndex) {
     parsedScriptObject.value?.episode_id || selectedStoryboard.value?.episode_id || state.selectedEpisodeId || ""
   ).trim();
 
+  const response = await createShot(state.selectedSeriesSlug, state.selectedStoryboardId, {
+    scene_id: sceneId,
+    shot_payload: {
+      characters: matchedIds,
+      script_source: {
+        episode_id: episodeId,
+        scene_index: sceneIndex + 1,
+        shot_index: shotIndex + 1
+      },
+      story,
+      dialogue: dialogues,
+      media: buildImportedShotMedia(),
+      visual: {
+        aspect_ratio: forms.shotAspectRatio,
+        style: "cinematic realism",
+        resolution: forms.shotResolution,
+        generation_count: normalizeShotGenerationCount(forms.shotGenerationCount),
+        shot_size: mapParsedShotSize(shotCamera.shot_size),
+        camera_angle: mapParsedCameraAngle(shotCamera.angle),
+        camera_movement: mapParsedShotMovement(shotCamera.movement),
+        lens: "50mm",
+        depth_of_field: "medium",
+        lighting: forms.shotLighting.trim(),
+        palette: forms.shotPalette.trim(),
+        duration_seconds: normalizeShotDuration(forms.shotDuration)
+      },
+      status: "draft"
+    }
+  });
+
+  return {
+    item: response.item,
+    sceneId,
+    unmatchedNames
+  };
+}
+
+async function handleImportAllReadableShots() {
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
+    setError("请先选择一个分镜板，再导入镜头卡草稿");
+    return;
+  }
+
+  const shotEntries = [];
+  for (const [sceneIndex, scene] of (parsedScriptReadableScenes.value || []).entries()) {
+    for (const [shotIndex, shot] of (scene?.shots || []).entries()) {
+      shotEntries.push({ scene, shot, sceneIndex, shotIndex });
+    }
+  }
+
+  if (!shotEntries.length) {
+    setError("当前可读视图里没有可导入的镜头");
+    return;
+  }
+
   loading.importParsedShot = true;
   try {
-    const response = await createShot(state.selectedSeriesSlug, state.selectedStoryboardId, {
-      scene_id: sceneId,
-      shot_payload: {
-        characters: matchedIds,
-        script_source: {
-          episode_id: episodeId,
-          scene_index: sceneIndex + 1,
-          shot_index: shotIndex + 1
-        },
-        story,
-        dialogue: dialogues,
-        media: buildImportedShotMedia(),
-        visual: {
-          aspect_ratio: forms.shotAspectRatio,
-          style: "cinematic realism",
-          resolution: forms.shotResolution,
-          generation_count: normalizeShotGenerationCount(forms.shotGenerationCount),
-          shot_size: mapParsedShotSize(shotCamera.shot_size),
-          camera_angle: mapParsedCameraAngle(shotCamera.angle),
-          camera_movement: mapParsedShotMovement(shotCamera.movement),
-          lens: "50mm",
-          depth_of_field: "medium",
-          lighting: forms.shotLighting.trim(),
-          palette: forms.shotPalette.trim(),
-          duration_seconds: normalizeShotDuration(forms.shotDuration)
-        },
-        status: "draft"
+    const importedIds = [];
+    const unmatchedNotes = [];
+    const failedNotes = [];
+    let lastSceneId = "";
+
+    for (const entry of shotEntries) {
+      try {
+        const result = await importReadableShotDraft(entry.scene, entry.shot, entry.sceneIndex, entry.shotIndex);
+        importedIds.push(result.item.id);
+        lastSceneId = result.sceneId || lastSceneId;
+        if (result.unmatchedNames.length) {
+          unmatchedNotes.push(`镜头${entry.shotIndex + 1} 未匹配角色：${result.unmatchedNames.join("、")}`);
+        }
+      } catch (error) {
+        failedNotes.push(
+          `场景${entry.sceneIndex + 1}/镜头${entry.shotIndex + 1}：${error instanceof Error ? error.message : String(error)}`
+        );
       }
-    });
+    }
+
+    if (!importedIds.length) {
+      throw new Error(failedNotes.join("；") || "全部导入失败");
+    }
 
     await loadProductionData(state.selectedSeriesSlug);
-    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
-    state.selectedSceneId = sceneId;
-    state.selectedShotId = response.item.id;
-    setNotice(
-      `已导入镜头卡草稿：${response.item.id}${unmatchedNames.length ? `，未匹配角色：${unmatchedNames.join("、")}` : ""}`
+    await loadShotsForStoryboard(
+      state.selectedSeriesSlug,
+      state.selectedStoryboardId,
+      importedIds[importedIds.length - 1]
     );
+    if (lastSceneId) {
+      state.selectedSceneId = lastSceneId;
+    }
+    state.selectedShotId = importedIds[importedIds.length - 1];
+
+    const noticeParts = [`已批量导入 ${importedIds.length} 个镜头卡草稿`];
+    if (failedNotes.length) {
+      noticeParts.push(`失败 ${failedNotes.length} 个`);
+    }
+    if (unmatchedNotes.length) {
+      noticeParts.push(unmatchedNotes.slice(0, 2).join("；"));
+    }
+    setNotice(noticeParts.join("，"));
+    state.error = failedNotes.join("\n");
   } catch (error) {
     setError(error);
   } finally {
@@ -1964,16 +2230,23 @@ async function loadProductionData(seriesSlug) {
     state.storyboards = [];
     state.snapshots = [];
     state.jobs = [];
+    state.remoteTasks = [];
     state.shots = [];
+    state.shotBatches = [];
     state.selectedCharacterId = "";
     state.selectedSceneId = "";
     state.selectedStoryboardId = "";
     state.selectedShotId = "";
+    state.selectedShotIds = [];
+    state.selectedShotBatchId = "";
     state.selectedSnapshotId = "";
     state.selectedJobId = "";
+    state.selectedRemoteTaskId = "";
     state.selectedCharacterBible = null;
     state.selectedScenePackage = null;
+    state.selectedShotBatch = null;
     state.selectedJob = null;
+    state.selectedRemoteTask = null;
     syncAssetCounts();
     return;
   }
@@ -2031,6 +2304,7 @@ async function loadProductionData(seriesSlug) {
     } else {
       state.selectedSnapshot = null;
     }
+    await loadRemoteTasks(seriesSlug, state.selectedRemoteTaskId);
   } catch (error) {
     if (requestId !== productionRequestSeed || seriesSlug !== state.selectedSeriesSlug) {
       return;
@@ -2048,6 +2322,7 @@ async function loadShotsForStoryboard(seriesSlug, storyboardId, preferredShotId 
   if (!seriesSlug || !storyboardId) {
     state.shots = [];
     state.selectedShotId = "";
+    state.selectedShotIds = [];
     return;
   }
 
@@ -2064,6 +2339,7 @@ async function loadShotsForStoryboard(seriesSlug, storyboardId, preferredShotId 
       return;
     }
     state.shots = data.items || [];
+    state.selectedShotIds = state.selectedShotIds.filter((item) => state.shots.some((shot) => shot.id === item));
     state.selectedShotId = state.shots.some((item) => item.id === desiredShotId)
       ? desiredShotId
       : state.shots[0]?.id || "";
@@ -2079,6 +2355,52 @@ async function loadShotsForStoryboard(seriesSlug, storyboardId, preferredShotId 
   } finally {
     if (requestId === shotsRequestSeed) {
       loading.shots = false;
+    }
+  }
+}
+
+async function loadShotBatchesForStoryboard(seriesSlug, storyboardId, preferredBatchId = "") {
+  const requestId = ++shotBatchRequestSeed;
+  if (!seriesSlug || !storyboardId) {
+    state.shotBatches = [];
+    state.selectedShotBatchId = "";
+    state.selectedShotBatch = null;
+    return;
+  }
+
+  const desiredBatchId = preferredBatchId || state.selectedShotBatchId;
+  loading.shotBatches = true;
+  try {
+    const response = await listShotBatches(seriesSlug, storyboardId);
+    if (
+      requestId !== shotBatchRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      storyboardId !== state.selectedStoryboardId
+    ) {
+      return;
+    }
+    state.shotBatches = response.items || [];
+    state.selectedShotBatchId = state.shotBatches.some((item) => item.id === desiredBatchId)
+      ? desiredBatchId
+      : state.shotBatches[0]?.id || "";
+    if (!state.selectedShotBatchId) {
+      state.selectedShotBatch = null;
+    }
+  } catch (error) {
+    if (
+      requestId !== shotBatchRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      storyboardId !== state.selectedStoryboardId
+    ) {
+      return;
+    }
+    state.shotBatches = [];
+    state.selectedShotBatchId = "";
+    state.selectedShotBatch = null;
+    setError(error);
+  } finally {
+    if (requestId === shotBatchRequestSeed) {
+      loading.shotBatches = false;
     }
   }
 }
@@ -2263,6 +2585,129 @@ async function loadSnapshotDetail(seriesSlug, snapshotId) {
   } finally {
     if (requestId === snapshotDetailRequestSeed) {
       loading.snapshotDetail = false;
+    }
+  }
+}
+
+async function loadShotBatchDetail(seriesSlug, storyboardId, batchId) {
+  const requestId = ++shotBatchDetailRequestSeed;
+  if (!seriesSlug || !storyboardId || !batchId) {
+    state.selectedShotBatch = null;
+    return;
+  }
+
+  loading.shotBatches = true;
+  state.selectedShotBatch = null;
+  try {
+    const response = await getShotBatch(seriesSlug, storyboardId, batchId);
+    if (
+      requestId !== shotBatchDetailRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      storyboardId !== state.selectedStoryboardId ||
+      batchId !== state.selectedShotBatchId
+    ) {
+      return;
+    }
+    state.selectedShotBatch = response.item || null;
+  } catch (error) {
+    if (
+      requestId !== shotBatchDetailRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      storyboardId !== state.selectedStoryboardId ||
+      batchId !== state.selectedShotBatchId
+    ) {
+      return;
+    }
+    state.selectedShotBatch = null;
+    setError(error);
+  } finally {
+    if (requestId === shotBatchDetailRequestSeed) {
+      loading.shotBatches = false;
+    }
+  }
+}
+
+async function loadRemoteTasks(seriesSlug, preferredTaskId = "") {
+  const requestId = ++remoteTaskRequestSeed;
+  const linkedTaskIds = getLinkedRemoteTaskIds();
+  if (!seriesSlug || !linkedTaskIds.length) {
+    state.remoteTasks = [];
+    state.selectedRemoteTaskId = "";
+    state.selectedRemoteTask = null;
+    return;
+  }
+
+  loading.remoteTasks = true;
+  const desiredTaskId = preferredTaskId || state.selectedRemoteTaskId;
+  try {
+    const response = await listRemoteVideoTasks(seriesSlug, {
+      page_size: Math.max(20, linkedTaskIds.length),
+      task_ids: linkedTaskIds
+    });
+    if (requestId !== remoteTaskRequestSeed || seriesSlug !== state.selectedSeriesSlug) {
+      return;
+    }
+    const remoteItems = Array.isArray(response.items)
+      ? response.items
+      : Array.isArray(response.data)
+        ? response.data
+        : Array.isArray(response.tasks)
+          ? response.tasks
+          : [];
+    state.remoteTasks = remoteItems;
+    state.selectedRemoteTaskId = state.remoteTasks.some((item) => getRemoteTaskId(item) === desiredTaskId)
+      ? desiredTaskId
+      : getRemoteTaskId(state.remoteTasks[0]) || "";
+    if (!state.selectedRemoteTaskId) {
+      state.selectedRemoteTask = null;
+    }
+  } catch (error) {
+    if (requestId !== remoteTaskRequestSeed || seriesSlug !== state.selectedSeriesSlug) {
+      return;
+    }
+    state.remoteTasks = [];
+    state.selectedRemoteTaskId = "";
+    state.selectedRemoteTask = null;
+    setError(error);
+  } finally {
+    if (requestId === remoteTaskRequestSeed) {
+      loading.remoteTasks = false;
+    }
+  }
+}
+
+async function loadRemoteTaskDetail(seriesSlug, taskId) {
+  const requestId = ++remoteTaskDetailRequestSeed;
+  if (!seriesSlug || !taskId) {
+    state.selectedRemoteTask = null;
+    return;
+  }
+
+  loading.remoteTaskDetail = true;
+  state.selectedRemoteTask = null;
+  try {
+    const response = await getRemoteVideoTask(seriesSlug, taskId);
+    if (
+      requestId !== remoteTaskDetailRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      taskId !== state.selectedRemoteTaskId
+    ) {
+      return;
+    }
+    state.selectedRemoteTask = response || null;
+  } catch (error) {
+    if (
+      requestId !== remoteTaskDetailRequestSeed ||
+      seriesSlug !== state.selectedSeriesSlug ||
+      taskId !== state.selectedRemoteTaskId
+    ) {
+      return;
+    }
+    state.selectedRemoteTask = null;
+    setError(error);
+  } finally {
+    if (requestId === remoteTaskDetailRequestSeed) {
+      loading.remoteTaskDetail = false;
     }
   }
 }
@@ -2928,6 +3373,7 @@ async function handleCreateShot() {
     });
     await loadProductionData(state.selectedSeriesSlug);
     await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, state.selectedShotBatchId);
     state.selectedShotId = response.item.id;
     setNotice(`已创建镜头：${response.item.id}`);
   } catch (error) {
@@ -2974,6 +3420,7 @@ async function handleUpdateShot(item = selectedShot.value) {
       }
     });
     await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, state.selectedShotBatchId);
     state.selectedShotId = targetShotId;
     cancelShotEdit();
     setNotice("镜头已更新");
@@ -3005,6 +3452,7 @@ async function handleDeleteShot(item = selectedShot.value) {
       cancelShotEdit();
     }
     await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, state.selectedShotBatchId);
     await loadProductionData(state.selectedSeriesSlug);
     setNotice("镜头已删除");
   } catch (error) {
@@ -3062,6 +3510,248 @@ async function handleCreateRenderTask() {
     setError(error);
   } finally {
     loading.createRender = false;
+  }
+}
+
+async function handleCreateShotBatch(scope = "selected") {
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
+    setError("请先选择一个分镜板");
+    return;
+  }
+  if (selectedStoryboardProductionMode.value !== "shot_pipeline") {
+    setError("场景直出模式不生成镜头批次");
+    return;
+  }
+
+  const shotIds =
+    scope === "all"
+      ? state.shots.map((item) => item.id).filter(Boolean)
+      : state.selectedShotIds.filter(Boolean);
+  if (!shotIds.length) {
+    setError(scope === "all" ? "当前分镜板还没有镜头卡" : "请先勾选至少一个镜头卡");
+    return;
+  }
+
+  loading.createShotBatch = true;
+  try {
+    const response = await createShotBatch(state.selectedSeriesSlug, state.selectedStoryboardId, {
+      shot_ids: shotIds,
+      auto_assemble_if_missing: true
+    });
+    await loadProductionData(state.selectedSeriesSlug);
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, response.item.id);
+    state.selectedShotBatchId = response.item.id;
+    setNotice(`已创建批次：${response.item.id}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.createShotBatch = false;
+  }
+}
+
+async function handleSubmitShotBatch(batch = selectedShotBatchComputed.value) {
+  const batchId = String(batch?.id || "").trim();
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !batchId) {
+    setError("请先选择一个批次");
+    return;
+  }
+
+  loading.submitShotBatch = true;
+  try {
+    const response = await submitShotBatch(state.selectedSeriesSlug, state.selectedStoryboardId, batchId);
+    await loadProductionData(state.selectedSeriesSlug);
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, response.item.id);
+    state.selectedShotBatchId = response.item.id;
+    await loadRemoteTasks(state.selectedSeriesSlug);
+    setNotice(`批次已提交：${response.item.id}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.submitShotBatch = false;
+  }
+}
+
+async function handleRefreshShotBatch(batch = selectedShotBatchComputed.value) {
+  const batchId = String(batch?.id || "").trim();
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !batchId) {
+    setError("请先选择一个批次");
+    return;
+  }
+
+  loading.refreshShotBatch = true;
+  try {
+    const response = await refreshShotBatch(state.selectedSeriesSlug, state.selectedStoryboardId, batchId);
+    await loadProductionData(state.selectedSeriesSlug);
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, response.item.id);
+    state.selectedShotBatchId = response.item.id;
+    await loadRemoteTasks(state.selectedSeriesSlug);
+    setNotice(`批次已刷新：${response.item.id}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.refreshShotBatch = false;
+  }
+}
+
+async function handleRetryFailedShotBatch(batch = selectedShotBatchComputed.value) {
+  const batchId = String(batch?.id || "").trim();
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !batchId) {
+    setError("请先选择一个批次");
+    return;
+  }
+
+  loading.retryShotBatch = true;
+  try {
+    const response = await retryFailedShotBatch(state.selectedSeriesSlug, state.selectedStoryboardId, batchId);
+    await loadProductionData(state.selectedSeriesSlug);
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, response.item.id);
+    state.selectedShotBatchId = response.item.id;
+    setNotice(`批次失败项已重试：${response.item.id}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.retryShotBatch = false;
+  }
+}
+
+async function handleDeleteShotBatch(batch = selectedShotBatchComputed.value) {
+  const batchId = String(batch?.id || "").trim();
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !batchId) {
+    setError("请先选择一个批次");
+    return;
+  }
+
+  const confirmed = await confirmDanger(`确定删除批次“${batchId}”吗？`, "删除批次");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteShotBatch = true;
+  try {
+    await deleteShotBatch(state.selectedSeriesSlug, state.selectedStoryboardId, batchId);
+    if (state.selectedShotBatchId === batchId) {
+      state.selectedShotBatchId = "";
+      state.selectedShotBatch = null;
+    }
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    setNotice(`批次已删除：${batchId}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteShotBatch = false;
+  }
+}
+
+async function handleClearShotBatches() {
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
+    setError("请先选择一个分镜板");
+    return;
+  }
+  if (!state.shotBatches.length) {
+    setError("当前没有可清空的批次");
+    return;
+  }
+
+  const confirmed = await confirmDanger("确定清空当前分镜板下的全部批次吗？", "清空批次");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.clearShotBatches = true;
+  try {
+    await clearShotBatches(state.selectedSeriesSlug, state.selectedStoryboardId);
+    state.selectedShotBatchId = "";
+    state.selectedShotBatch = null;
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    setNotice("批次已清空");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.clearShotBatches = false;
+  }
+}
+
+async function handleClearShots() {
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
+    setError("请先选择一个分镜板");
+    return;
+  }
+  if (!state.shots.length) {
+    setError("当前没有可清空的镜头卡");
+    return;
+  }
+
+  const confirmed = await confirmDanger("确定清空当前分镜板下的全部镜头卡吗？", "清空镜头卡");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.clearShots = true;
+  try {
+    await clearShots(state.selectedSeriesSlug, state.selectedStoryboardId);
+    state.selectedShotId = "";
+    state.selectedShotIds = [];
+    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    setNotice("镜头卡已清空");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.clearShots = false;
+  }
+}
+
+async function handleRefreshRemoteTasks() {
+  if (!state.selectedSeriesSlug) {
+    setError("请先选择一个系列");
+    return;
+  }
+
+  await loadRemoteTasks(state.selectedSeriesSlug, state.selectedRemoteTaskId);
+  if (state.selectedRemoteTaskId) {
+    await loadRemoteTaskDetail(state.selectedSeriesSlug, state.selectedRemoteTaskId);
+  }
+  setNotice("远程任务列表已刷新");
+}
+
+async function handleOpenRemoteTaskJob(task = selectedRemoteTaskComputed.value) {
+  const linkedJob = getRemoteTaskLinkedJob(task);
+  if (!linkedJob) {
+    setError("当前远程任务没有关联本地草稿");
+    return;
+  }
+  state.selectedJobId = linkedJob.id;
+}
+
+async function handleDeleteRemoteTask(task = selectedRemoteTaskComputed.value) {
+  const taskId = getRemoteTaskId(task);
+  if (!state.selectedSeriesSlug || !taskId) {
+    setError("请先选择一个远程任务");
+    return;
+  }
+
+  const confirmed = await confirmDanger(`确定取消或删除远程任务“${taskId}”吗？`, "删除远程任务");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.deleteRemoteTask = true;
+  try {
+    const linkedJob = getRemoteTaskLinkedJob(task);
+    await deleteRemoteVideoTask(state.selectedSeriesSlug, taskId, {
+      job_id: linkedJob?.id || ""
+    });
+    if (state.selectedRemoteTaskId === taskId) {
+      state.selectedRemoteTaskId = "";
+      state.selectedRemoteTask = null;
+    }
+    await loadProductionData(state.selectedSeriesSlug);
+    await loadRemoteTasks(state.selectedSeriesSlug);
+    setNotice(`远程任务已删除：${taskId}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.deleteRemoteTask = false;
   }
 }
 
@@ -3124,6 +3814,7 @@ async function handleSubmitJob() {
   try {
     const response = await submitJob(state.selectedSeriesSlug, state.selectedJobId);
     await loadProductionData(state.selectedSeriesSlug);
+    await loadRemoteTasks(state.selectedSeriesSlug, getRemoteTaskIdByJob(response.item));
     state.selectedJobId = response.item.id;
     await loadJobDetail(state.selectedSeriesSlug, response.item.id);
     setNotice(`任务 ${response.item.id} 当前状态：${formatStatus(response.item.status)}`);
@@ -3144,6 +3835,7 @@ async function handleRefreshJob() {
   try {
     const response = await refreshJob(state.selectedSeriesSlug, state.selectedJobId);
     await loadProductionData(state.selectedSeriesSlug);
+    await loadRemoteTasks(state.selectedSeriesSlug, getRemoteTaskIdByJob(response.item));
     state.selectedJobId = response.item.id;
     await loadJobDetail(state.selectedSeriesSlug, response.item.id);
     setNotice(`任务 ${response.item.id} 已刷新：${formatStatus(response.item.status)}`);
@@ -3355,19 +4047,26 @@ watch(
       state.selectedEpisodeId = "";
       state.selectedStoryboardId = "";
       state.selectedShotId = "";
+      state.selectedShotIds = [];
+      state.selectedShotBatchId = "";
       state.selectedCharacterId = "";
       state.selectedSceneId = "";
       state.selectedJobId = "";
+      state.selectedRemoteTaskId = "";
       state.characters = [];
       state.scenes = [];
       state.storyboards = [];
       state.shots = [];
+      state.shotBatches = [];
       state.jobs = [];
+      state.remoteTasks = [];
       state.selectedCharacterIds = [];
       state.selectedCharacterBible = null;
       state.selectedScenePackage = null;
+      state.selectedShotBatch = null;
       state.selectedJob = null;
       state.selectedSnapshot = null;
+      state.selectedRemoteTask = null;
       forms.shotSceneId = "";
       state.rawScript = "";
       state.parsedScriptText = JSON.stringify(defaultParsedScript(""), null, 2);
@@ -3396,6 +4095,7 @@ watch(
   async (storyboardId) => {
     cancelShotEdit();
     await loadShotsForStoryboard(state.selectedSeriesSlug, storyboardId);
+    await loadShotBatchesForStoryboard(state.selectedSeriesSlug, storyboardId);
   }
 );
 
@@ -3430,6 +4130,24 @@ watch(
     await loadJobDetail(state.selectedSeriesSlug, jobId);
     const job = state.jobs.find((item) => item.id === jobId) || null;
     await loadSnapshotDetail(state.selectedSeriesSlug, job?.snapshot_id || "");
+    const remoteTaskId = getRemoteTaskIdByJob(job);
+    if (remoteTaskId) {
+      state.selectedRemoteTaskId = remoteTaskId;
+    }
+  }
+);
+
+watch(
+  () => state.selectedShotBatchId,
+  async (batchId) => {
+    await loadShotBatchDetail(state.selectedSeriesSlug, state.selectedStoryboardId, batchId);
+  }
+);
+
+watch(
+  () => state.selectedRemoteTaskId,
+  async (taskId) => {
+    await loadRemoteTaskDetail(state.selectedSeriesSlug, taskId);
   }
 );
 
@@ -3745,6 +4463,7 @@ onMounted(boot);
                   </div>
                 </div>
 
+
                 <div v-if="parsedScriptReadableScenes.length" class="form-stack">
                   <div v-for="(scene, sceneIndex) in parsedScriptReadableScenes"
                     :key="scene.scene_id || scene.readable?.['场景编号']" class="meta-panel">
@@ -3876,6 +4595,17 @@ onMounted(boot);
                         </div>
                       </div>
                     </div>
+
+                    <div style="grid-column: 1 / -1; ">
+
+
+                      <el-button class="action-button warm" style="width: 100%;"
+                        :disabled="loading.importParsedShot || !state.selectedStoryboardId || !parsedScriptReadableScenes.length"
+                        @click="handleImportAllReadableShots">
+                        {{ loading.importParsedShot ? "导入中..." : "全部导入为镜头卡草稿" }}
+                      </el-button>
+                    </div>
+
                   </div>
                 </div>
 
@@ -4415,6 +5145,20 @@ onMounted(boot);
 
             <div class="mini-list">
               <h3>导入的静头卡最好编辑一下，因为时间之类的都是默认的</h3>
+              <div class="subsection-header">
+                <div class="inline-actions compact-actions">
+                  <el-button class="action-button ghost compact-button" @click="selectAllShotsForBatch">
+                    全选批次
+                  </el-button>
+                  <el-button class="action-button ghost compact-button" @click="clearShotSelection">
+                    清空勾选
+                  </el-button>
+                  <el-button class="action-button ghost danger compact-button" :disabled="loading.clearShots"
+                    @click="handleClearShots">
+                    {{ loading.clearShots ? "清空中..." : "清空镜头卡" }}
+                  </el-button>
+                </div>
+              </div>
               <div v-for="item in state.shots" :key="item.id" class="mini-card selectable"
                 :class="{ active: item.id === state.selectedShotId }">
                 <div class="item-body" @click="state.selectedShotId = item.id">
@@ -4622,6 +5366,11 @@ onMounted(boot);
                   </template>
                 </div>
                 <div class="item-actions">
+                  <el-button v-if="!isEditingShot(item.id)" class="action-button compact-button"
+                    :class="isShotSelectedForBatch(item.id) ? 'warm' : 'ghost'"
+                    @click.stop="toggleShotSelection(item.id)">
+                    {{ isShotSelectedForBatch(item.id) ? "已选入批次" : "选入批次" }}
+                  </el-button>
                   <el-button v-if="isEditingShot(item.id)" class="action-button dark compact-button"
                     :disabled="loading.updateShot" @click.stop="handleUpdateShot(item)">
                     {{ loading.updateShot ? "保存中..." : "保存" }}
@@ -4780,6 +5529,9 @@ onMounted(boot);
           </div>
         </section>
 
+      </aside>
+
+      <aside class="column column-execution">
         <section v-loading="executionPanelLoading" element-loading-text="执行区处理中..."
           :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
           element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
@@ -4838,10 +5590,33 @@ onMounted(boot);
             <template v-if="selectedStoryboardProductionMode === 'shot_pipeline'">
               <el-button class="action-button dark full-width" :disabled="loading.shotPackage"
                 @click="handleAssembleShotPackage">
-                {{ loading.shotPackage ? "生成中..." : "生成镜头包" }}
+                {{ loading.shotPackage ? "生成中..." : "生成当前镜头包" }}
               </el-button>
 
-
+              <div class="meta-panel">
+                <div class="meta-row">
+                  <span>当前镜头卡</span>
+                  <strong>{{ state.shots.length }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>已勾选批次</span>
+                  <strong>{{ state.selectedShotIds.length }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>批次草稿</span>
+                  <div class="inline-actions compact-actions">
+                    <el-button class="action-button ghost compact-button"
+                      :disabled="loading.createShotBatch || !state.selectedShotIds.length"
+                      @click="handleCreateShotBatch('selected')">
+                      {{ loading.createShotBatch ? "处理中..." : "生成选中批次" }}
+                    </el-button>
+                    <el-button class="action-button warm compact-button"
+                      :disabled="loading.createShotBatch || !state.shots.length" @click="handleCreateShotBatch('all')">
+                      {{ loading.createShotBatch ? "处理中..." : "批量生成草稿批次" }}
+                    </el-button>
+                  </div>
+                </div>
+              </div>
 
               <div v-if="selectedShot" class="focus-card">
                 <span>当前镜头</span>
@@ -4979,6 +5754,113 @@ onMounted(boot);
                 @click="handleCreateRenderTask">
                 {{ loading.createRender ? "生成中..." : "生成提交草稿" }}
               </el-button>
+
+              <div class="subsection">
+                <div class="subsection-header">
+                  <h3>批次列表</h3>
+                  <div class="inline-actions compact-actions">
+                    <el-button class="action-button ghost compact-button"
+                      :disabled="loading.deleteShotBatch || !selectedShotBatchComputed"
+                      @click="handleDeleteShotBatch()">
+                      {{ loading.deleteShotBatch ? "删除中..." : "删除当前批次" }}
+                    </el-button>
+                    <el-button class="action-button ghost danger compact-button"
+                      :disabled="loading.clearShotBatches || !state.shotBatches.length" @click="handleClearShotBatches">
+                      {{ loading.clearShotBatches ? "清空中..." : "清空批次" }}
+                    </el-button>
+                  </div>
+                </div>
+
+                <div v-loading="shotBatchesListLoading" element-loading-text="批次列表加载中..."
+                  :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+                  element-loading-background="rgba(7, 10, 14, 0.18)" class="mini-list nested-mini-list">
+                  <div v-for="batch in state.shotBatches" :key="batch.id" class="mini-card selectable"
+                    :class="{ active: batch.id === state.selectedShotBatchId }">
+                    <div class="item-body" @click="state.selectedShotBatchId = batch.id">
+                      <strong>{{ batch.name || batch.id }}</strong>
+                      <span>{{ batch.id }} · {{ formatStatus(batch.status) }}</span>
+                      <small>{{ formatShotBatchCounts(batch) }}</small>
+                      <small>进度：{{ formatShotBatchProgress(batch) }} · 可提交
+                        {{ getShotBatchSubmittableCount(batch) }}</small>
+                    </div>
+                    <div class="item-actions">
+                      <el-button class="action-button ghost compact-button"
+                        :disabled="loading.submitShotBatch || !getShotBatchSubmittableCount(batch)"
+                        @click.stop="handleSubmitShotBatch(batch)">
+                        {{ loading.submitShotBatch ? "提交中..." : "未提交/失败-镜头提交" }}
+                      </el-button>
+                      <el-button class="action-button ghost compact-button" :disabled="loading.refreshShotBatch"
+                        @click.stop="handleRefreshShotBatch(batch)">
+                        {{ loading.refreshShotBatch ? "刷新中..." : "刷新批次" }}
+                      </el-button>
+                      <el-button class="action-button ghost compact-button"
+                        :disabled="loading.retryShotBatch || !batch.failed_count"
+                        @click.stop="handleRetryFailedShotBatch(batch)">
+                        {{ loading.retryShotBatch ? "重试中..." : "重试失败项" }}
+                      </el-button>
+                    </div>
+                  </div>
+                  <div v-if="!state.shotBatches.length" class="empty-state">当前还没有镜头批次。</div>
+                </div>
+
+                <div v-if="selectedShotBatchComputed" class="meta-panel">
+                  <div class="meta-row">
+                    <span>当前批次</span>
+                    <strong>{{ selectedShotBatchComputed.id }}</strong>
+                  </div>
+                  <div class="meta-row">
+                    <span>批次状态</span>
+                    <strong>{{ formatStatus(selectedShotBatchComputed.status) }}</strong>
+                  </div>
+                  <div class="meta-row">
+                    <span>镜头数量</span>
+                    <strong>{{ selectedShotBatchComputed.total_count || 0 }}</strong>
+                  </div>
+                  <div class="meta-row">
+                    <span>批次成功率</span>
+                    <strong>{{ formatShotBatchProgress(selectedShotBatchComputed) }}</strong>
+                  </div>
+                  <div class="meta-row meta-row-wide">
+                    <span>明细</span>
+                    <strong class="prompt-preview">{{ formatShotBatchCounts(selectedShotBatchComputed) }}</strong>
+                  </div>
+                </div>
+
+                <div v-if="selectedShotBatchComputed?.items?.length" class="mini-list nested-mini-list">
+                  <div v-for="batchItem in selectedShotBatchComputed.items"
+                    :key="`${selectedShotBatchComputed.id}-${batchItem.shot_id}`" class="mini-card">
+                    <div class="item-body">
+                      <strong>{{ batchItem.shot_id }}</strong>
+                      <span>{{ formatStatus(batchItem.status) }}</span>
+                      <small>快照：{{ batchItem.snapshot_id || "暂无" }} · 草稿：{{ batchItem.job_id || "暂无" }}</small>
+                      <small>{{ batchItem.error || "无错误" }}</small>
+                    </div>
+                    <div class="item-actions">
+                      <el-button v-if="batchItem.job_id" class="action-button ghost compact-button"
+                        @click.stop="state.selectedJobId = batchItem.job_id">
+                        打开草稿
+                      </el-button>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="getBatchCompletedItems(selectedShotBatchComputed).length" class="reference-grid">
+                  <div v-for="item in getBatchCompletedItems(selectedShotBatchComputed)"
+                    :key="`batch-result-${item.job_id}`" class="reference-card">
+                    <div class="reference-header">
+                      <strong>{{ item.shot_id }}</strong>
+                      <small>{{ item.job_id }}</small>
+                    </div>
+                    <video v-if="getBatchJobVideoUrl(item.job_id)" class="video-preview"
+                      :src="getBatchJobVideoUrl(item.job_id)" controls preload="metadata" />
+                    <el-image v-else-if="getBatchJobCoverUrl(item.job_id)" class="preview-image"
+                      :src="getBatchJobCoverUrl(item.job_id)"
+                      :preview-src-list="getBatchJobCoverUrl(item.job_id) ? [getBatchJobCoverUrl(item.job_id)] : []"
+                      :initial-index="0" fit="cover" preview-teleported />
+                    <div v-else class="reference-empty">暂无结果预览</div>
+                  </div>
+                </div>
+              </div>
             </template>
 
             <template v-else>
@@ -5306,6 +6188,11 @@ onMounted(boot);
                         @click="handleRefreshJob">
                         {{ loading.refreshJob ? "刷新中..." : "刷新状态" }}
                       </el-button>
+                      <el-button class="action-button ghost danger"
+                        :disabled="loading.deleteRemoteTask || !selectedJobComputed.remote?.task_id"
+                        @click="handleDeleteRemoteTask({ id: selectedJobComputed.remote?.task_id })">
+                        {{ loading.deleteRemoteTask ? "删除中..." : "删除远程任务" }}
+                      </el-button>
                     </div>
                   </div>
 
@@ -5408,6 +6295,89 @@ onMounted(boot);
                   </div>
                 </template>
               </el-skeleton>
+            </div>
+          </div>
+
+          <div class="execution-stage">
+            <div class="panel-header sub-panel-header execution-stage-header">
+              <div>
+                <p class="panel-kicker">Remote</p>
+                <h3>远程任务</h3>
+              </div>
+              <div class="inline-actions compact-actions">
+                <el-button class="action-button ghost compact-button"
+                  :disabled="remoteTasksListLoading || !state.remoteTasks.length" @click="handleRefreshRemoteTasks">
+                  {{ remoteTasksListLoading ? "刷新中..." : "刷新远程任务" }}
+                </el-button>
+                <span class="pill">{{ state.remoteTasks.length }} 项</span>
+              </div>
+            </div>
+
+            <div v-loading="remoteTasksListLoading" element-loading-text="远程任务加载中..."
+              :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+              element-loading-background="rgba(7, 10, 14, 0.18)" class="mini-list">
+              <div v-for="task in state.remoteTasks" :key="getRemoteTaskId(task)" class="mini-card selectable"
+                :class="{ active: getRemoteTaskId(task) === state.selectedRemoteTaskId }">
+                <div class="item-body" @click="state.selectedRemoteTaskId = getRemoteTaskId(task)">
+                  <strong>{{ getRemoteTaskId(task) }}</strong>
+                  <span>{{ getRemoteTaskStatus(task) }}</span>
+                  <small>关联草稿：{{ getRemoteTaskLinkedJob(task)?.id || "暂无" }}</small>
+                </div>
+                <div class="item-actions">
+                  <el-button class="action-button ghost compact-button" :disabled="!getRemoteTaskLinkedJob(task)"
+                    @click.stop="handleOpenRemoteTaskJob(task)">
+                    打开草稿
+                  </el-button>
+                  <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteRemoteTask"
+                    @click.stop="handleDeleteRemoteTask(task)">
+                    {{ loading.deleteRemoteTask ? "删除中..." : "删除" }}
+                  </el-button>
+                </div>
+              </div>
+              <div v-if="!state.remoteTasks.length" class="empty-state">当前系列还没有关联的远程任务。</div>
+            </div>
+
+            <div v-if="selectedRemoteTaskComputed" class="meta-panel">
+              <div class="meta-row">
+                <span>远程任务 ID</span>
+                <strong>{{ getRemoteTaskId(selectedRemoteTaskComputed) }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>远程状态</span>
+                <strong>{{ getRemoteTaskStatus(selectedRemoteTaskComputed) }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>关联草稿</span>
+                <strong>{{ getRemoteTaskLinkedJob(selectedRemoteTaskComputed)?.id || "暂无" }}</strong>
+              </div>
+              <div class="meta-row">
+                <span>结果视频</span>
+                <strong>{{ selectedRemoteTaskVideoUrl || "暂无" }}</strong>
+              </div>
+            </div>
+
+            <div v-if="selectedRemoteTaskCoverUrl || selectedRemoteTaskVideoUrl" class="reference-grid">
+              <div v-if="selectedRemoteTaskCoverUrl" class="reference-card">
+                <div class="reference-header">
+                  <strong>远程封面</strong>
+                  <small>{{ selectedRemoteTaskCoverUrl }}</small>
+                </div>
+                <el-image class="preview-image" :src="selectedRemoteTaskCoverUrl"
+                  :preview-src-list="[selectedRemoteTaskCoverUrl]" :initial-index="0" fit="cover" preview-teleported />
+              </div>
+              <div v-if="selectedRemoteTaskVideoUrl" class="reference-card">
+                <div class="reference-header">
+                  <strong>远程视频</strong>
+                  <small>{{ selectedRemoteTaskVideoUrl }}</small>
+                </div>
+                <video class="video-preview" :src="selectedRemoteTaskVideoUrl" controls preload="metadata" />
+              </div>
+            </div>
+
+            <div v-if="selectedRemoteTaskComputed" class="form-stack">
+              <label class="code-label">Remote Task Payload</label>
+              <el-input :model-value="selectedRemoteTaskText" class="field-textarea code-textarea job-code"
+                type="textarea" resize="vertical" :autosize="{ minRows: 8, maxRows: 16 }" readonly />
             </div>
           </div>
         </section>
@@ -5528,14 +6498,14 @@ onMounted(boot);
 }
 
 .shell {
-  width: min(1720px, calc(100% - 20px));
+  width: min(2360px, calc(100% - 20px));
   margin: 0 auto;
   padding: 20px 0 34px;
 }
 
 .masthead {
   display: grid;
-  grid-template-columns: 1.5fr minmax(420px,
+  grid-template-columns: 1.5fr minmax(380px,
       480px);
   gap: var(--ui-gap);
   margin-bottom: var(--ui-gap);
@@ -5657,7 +6627,7 @@ h3 {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(420px, 480px);
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr) minmax(380px, 480px) minmax(380px, 480px);
   gap: var(--ui-gap);
   align-items: start;
 }
@@ -5891,6 +6861,18 @@ h3 {
 
 .execution-stage-header {
   margin-top: 0;
+}
+
+.subsection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nested-mini-list {
+  gap: 10px;
 }
 
 .panel-header>div {
@@ -7109,7 +8091,8 @@ h3 {
     grid-template-columns: 280px 1fr;
   }
 
-  .column-right {
+  .column-right,
+  .column-execution {
     grid-column: 1 / -1;
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -7130,6 +8113,7 @@ h3 {
   .summary-grid,
   .execution-flow,
   .column-right,
+  .column-execution,
   .split-grid,
   .check-grid,
   .reference-grid,

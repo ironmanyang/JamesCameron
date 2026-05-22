@@ -348,3 +348,26 @@ def delete_shot(series_slug: str, storyboard_id: str, shot_id: str) -> None:
     storyboard["shot_ids"] = [item for item in storyboard.get("shot_ids", []) if item != shot_id]
     storyboard["updated_at"] = utc_now_iso()
     write_json_atomic(get_storyboard_manifest_path(series_slug, storyboard_id), storyboard)
+
+
+def clear_storyboard_shots(series_slug: str, storyboard_id: str) -> dict[str, Any]:
+    storyboard = get_storyboard(series_slug, storyboard_id)
+    if storyboard is None:
+        raise FileNotFoundError(storyboard_id)
+
+    deleted_ids: list[str] = []
+    blocked: list[str] = []
+
+    for shot_id in list(storyboard.get("shot_ids", [])):
+        try:
+            delete_shot(series_slug, storyboard_id, shot_id)
+            deleted_ids.append(shot_id)
+        except ValueError:
+            blocked.append(shot_id)
+
+    latest = get_storyboard(series_slug, storyboard_id) or storyboard
+    return {
+        "deleted_ids": deleted_ids,
+        "blocked_ids": blocked,
+        "remaining_ids": list(latest.get("shot_ids", [])),
+    }

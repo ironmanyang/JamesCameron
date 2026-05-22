@@ -5,10 +5,18 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from app.services.scene_video_assembly import assemble_scene_direct_package
+from app.services.shot_batch_generation import (
+    create_shot_batch_and_generate,
+    refresh_shot_batch_jobs,
+    retry_failed_shot_batch_items,
+    submit_shot_batch_jobs,
+)
 from app.services.shot_assembly import assemble_shot_prompt_package
+from app.storage.shot_batch_store import clear_shot_batches, delete_shot_batch, get_shot_batch, list_shot_batches
 from app.storage.common import relative_to_series_root, utc_now_iso, write_bytes_atomic
 from app.storage.series_store import get_series_path
 from app.storage.storyboard_store import (
+    clear_storyboard_shots,
     create_shot,
     create_storyboard,
     delete_shot,
@@ -57,6 +65,29 @@ class AssembleScenePackageRequest(BaseModel):
     series_slug: str = Field(min_length=1)
     scene_id: str = Field(min_length=1, max_length=120)
     scene_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class CreateShotBatchRequest(BaseModel):
+    series_slug: str = Field(min_length=1)
+    shot_ids: list[str] = Field(min_length=1)
+    name: str = Field(default="", max_length=120)
+    auto_assemble_if_missing: bool = Field(default=True)
+    provider: dict[str, Any] = Field(default_factory=dict)
+
+
+class RetryShotBatchRequest(BaseModel):
+    series_slug: str = Field(min_length=1)
+    provider: dict[str, Any] = Field(default_factory=dict)
+
+
+class SubmitShotBatchRequest(BaseModel):
+    series_slug: str = Field(min_length=1)
+    provider: dict[str, Any] = Field(default_factory=dict)
+
+
+class RefreshShotBatchRequest(BaseModel):
+    series_slug: str = Field(min_length=1)
+    provider: dict[str, Any] = Field(default_factory=dict)
 
 
 SHOT_IMAGE_UPLOAD_TARGETS = {"first_frame", "last_frame", "reference_images"}
@@ -179,6 +210,100 @@ async def list_shots_api(storyboard_id: str, series_slug: str = Query(min_length
     return {"items": list_shots(series_slug.strip(), storyboard_id.strip())}
 
 
+@router.get("/{storyboard_id}/shot-batches")
+async def list_shot_batches_api(storyboard_id: str, series_slug: str = Query(min_length=1)):
+    return {"items": list_shot_batches(series_slug.strip(), storyboard_id.strip())}
+
+
+@router.get("/{storyboard_id}/shot-batches/{batch_id}")
+async def get_shot_batch_api(storyboard_id: str, batch_id: str, series_slug: str = Query(min_length=1)):
+    item = get_shot_batch(series_slug.strip(), storyboard_id.strip(), batch_id.strip())
+    if item is None:
+        raise HTTPException(status_code=404, detail="批次不存在")
+    return {"item": item}
+
+
+@router.post("/{storyboard_id}/shot-batches")
+async def create_shot_batch_api(storyboard_id: str, payload: CreateShotBatchRequest):
+    try:
+        item = create_shot_batch_and_generate(
+            series_slug=payload.series_slug.strip(),
+            storyboard_id=storyboard_id.strip(),
+            shot_ids=payload.shot_ids,
+            name=payload.name.strip(),
+            auto_assemble_if_missing=payload.auto_assemble_if_missing,
+            provider=payload.provider,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="批次来源数据不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"item": item}
+
+
+@router.post("/{storyboard_id}/shot-batches/{batch_id}/retry-failed")
+async def retry_failed_shot_batch_api(storyboard_id: str, batch_id: str, payload: RetryShotBatchRequest):
+    try:
+        item = retry_failed_shot_batch_items(
+            series_slug=payload.series_slug.strip(),
+            storyboard_id=storyboard_id.strip(),
+            batch_id=batch_id.strip(),
+            provider=payload.provider,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="批次不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"item": item}
+
+
+@router.post("/{storyboard_id}/shot-batches/{batch_id}/submit")
+async def submit_shot_batch_api(storyboard_id: str, batch_id: str, payload: SubmitShotBatchRequest):
+    try:
+        item = submit_shot_batch_jobs(
+            series_slug=payload.series_slug.strip(),
+            storyboard_id=storyboard_id.strip(),
+            batch_id=batch_id.strip(),
+            provider=payload.provider,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="批次不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"item": item}
+
+
+@router.post("/{storyboard_id}/shot-batches/{batch_id}/refresh")
+async def refresh_shot_batch_api(storyboard_id: str, batch_id: str, payload: RefreshShotBatchRequest):
+    try:
+        item = refresh_shot_batch_jobs(
+            series_slug=payload.series_slug.strip(),
+            storyboard_id=storyboard_id.strip(),
+            batch_id=batch_id.strip(),
+            provider=payload.provider,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="批次不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"item": item}
+
+
+@router.delete("/{storyboard_id}/shot-batches/{batch_id}")
+async def delete_shot_batch_api(storyboard_id: str, batch_id: str, series_slug: str = Query(min_length=1)):
+    try:
+        delete_shot_batch(series_slug.strip(), storyboard_id.strip(), batch_id.strip())
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="批次不存在") from exc
+    return {"ok": True}
+
+
+@router.delete("/{storyboard_id}/shot-batches")
+async def clear_shot_batches_api(storyboard_id: str, series_slug: str = Query(min_length=1)):
+    deleted_count = clear_shot_batches(series_slug.strip(), storyboard_id.strip())
+    return {"ok": True, "deleted_count": deleted_count}
+
+
 @router.post("/{storyboard_id}/shots")
 async def create_shot_api(storyboard_id: str, payload: CreateShotRequest):
     try:
@@ -228,6 +353,15 @@ async def delete_shot_api(storyboard_id: str, shot_id: str, series_slug: str = Q
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True}
+
+
+@router.delete("/{storyboard_id}/shots")
+async def clear_shots_api(storyboard_id: str, series_slug: str = Query(min_length=1)):
+    try:
+        result = clear_storyboard_shots(series_slug.strip(), storyboard_id.strip())
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="分镜板不存在") from exc
+    return result
 
 
 @router.post("/{storyboard_id}/shots/{shot_id}/assemble-package")

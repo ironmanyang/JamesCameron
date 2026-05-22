@@ -334,6 +334,70 @@ export function listShots(seriesSlug, storyboardId) {
   return request(`/api/storyboards/${storyboardId}/shots?series_slug=${encodeURIComponent(seriesSlug)}`);
 }
 
+export function listShotBatches(seriesSlug, storyboardId) {
+  return request(`/api/storyboards/${storyboardId}/shot-batches?series_slug=${encodeURIComponent(seriesSlug)}`);
+}
+
+export function getShotBatch(seriesSlug, storyboardId, batchId) {
+  return request(`/api/storyboards/${storyboardId}/shot-batches/${batchId}?series_slug=${encodeURIComponent(seriesSlug)}`);
+}
+
+export function deleteShotBatch(seriesSlug, storyboardId, batchId) {
+  return request(`/api/storyboards/${storyboardId}/shot-batches/${batchId}?series_slug=${encodeURIComponent(seriesSlug)}`, {
+    method: "DELETE"
+  });
+}
+
+export function clearShotBatches(seriesSlug, storyboardId) {
+  return request(`/api/storyboards/${storyboardId}/shot-batches?series_slug=${encodeURIComponent(seriesSlug)}`, {
+    method: "DELETE"
+  });
+}
+
+export function createShotBatch(seriesSlug, storyboardId, data) {
+  return request(`/api/storyboards/${storyboardId}/shot-batches`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      ...data
+    })
+  });
+}
+
+export function retryFailedShotBatch(seriesSlug, storyboardId, batchId, provider = {}) {
+  return request(`/api/storyboards/${storyboardId}/shot-batches/${batchId}/retry-failed`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      provider
+    })
+  });
+}
+
+export function submitShotBatch(seriesSlug, storyboardId, batchId, provider = {}) {
+  return request(`/api/storyboards/${storyboardId}/shot-batches/${batchId}/submit`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      provider
+    })
+  });
+}
+
+export function refreshShotBatch(seriesSlug, storyboardId, batchId, provider = {}) {
+  return request(`/api/storyboards/${storyboardId}/shot-batches/${batchId}/refresh`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      provider
+    })
+  });
+}
+
 export function createShot(seriesSlug, storyboardId, data) {
   return request(`/api/storyboards/${storyboardId}/shots`, {
     method: "POST",
@@ -363,6 +427,12 @@ export function deleteShot(seriesSlug, storyboardId, shotId) {
       method: "DELETE"
     }
   );
+}
+
+export function clearShots(seriesSlug, storyboardId) {
+  return request(`/api/storyboards/${storyboardId}/shots?series_slug=${encodeURIComponent(seriesSlug)}`, {
+    method: "DELETE"
+  });
 }
 
 export function assembleShotPackage(seriesSlug, storyboardId, shotId) {
@@ -456,6 +526,42 @@ export function createVideoJobFromSnapshot(data) {
 
 export function getJob(seriesSlug, jobId) {
   return request(`/api/jobs/${jobId}?series_slug=${encodeURIComponent(seriesSlug)}`);
+}
+
+export function listRemoteVideoTasks(seriesSlug, options = {}) {
+  const params = new URLSearchParams();
+  params.set("series_slug", seriesSlug);
+  if (options.page_size) {
+    params.set("page_size", String(options.page_size));
+  }
+  if (options.page_token) {
+    params.set("page_token", String(options.page_token));
+  }
+  if (options.status) {
+    params.set("status", String(options.status));
+  }
+  const taskIds = Array.isArray(options.task_ids)
+    ? options.task_ids.filter((item) => String(item || "").trim())
+    : [];
+  if (taskIds.length) {
+    params.set("task_ids", taskIds.join(","));
+  }
+  return request(`/api/jobs/remote/tasks?${params.toString()}`);
+}
+
+export function getRemoteVideoTask(seriesSlug, taskId) {
+  return request(`/api/jobs/remote/tasks/${taskId}?series_slug=${encodeURIComponent(seriesSlug)}`);
+}
+
+export function deleteRemoteVideoTask(seriesSlug, taskId, data = {}) {
+  return request(`/api/jobs/remote/tasks/${taskId}`, {
+    method: "DELETE",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      series_slug: seriesSlug,
+      ...data
+    })
+  });
 }
 
 export function deleteJob(seriesSlug, jobId) {

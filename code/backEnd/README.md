@@ -49,6 +49,8 @@ Current defaults target Doubao Seedance 2.0:
 - `VIDEO_PROVIDER_BASE_URL=https://ark.cn-beijing.volces.com/api/v3`
 - `VIDEO_PROVIDER_PATH=/contents/generations/tasks`
 - `VIDEO_PROVIDER_STATUS_PATH=/contents/generations/tasks/{task_id}`
+- `VIDEO_PROVIDER_LIST_PATH=/contents/generations/tasks`
+- `VIDEO_PROVIDER_DELETE_PATH=/contents/generations/tasks/{task_id}`
 
 To submit real tasks, you still need:
 
@@ -59,4 +61,7 @@ Job submit lifecycle:
 - `POST /api/jobs/from-snapshot` creates a local prepared job
 - `POST /api/jobs/{job_id}/submit` submits an existing prepared job
 - `POST /api/jobs/{job_id}/refresh` refreshes a submitted job and downloads completed assets into local `output/`
+- `GET /api/jobs/remote/tasks` lists remote Seedance tasks
+- `GET /api/jobs/remote/tasks/{task_id}` fetches one remote Seedance task
+- `DELETE /api/jobs/remote/tasks/{task_id}` cancels or deletes one remote Seedance task
 - raw provider responses are persisted under `output/<series>/jobs/_responses/`

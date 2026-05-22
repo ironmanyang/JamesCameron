@@ -16,7 +16,8 @@ from app.storage.snapshot_store import get_snapshot
 SEEDANCE_RATIO_VALUES = {"21:9", "1:1", "16:9", "3:4", "4:3", "9:16", "adaptive"}
 SEEDANCE_RESOLUTION_VALUES = {"480p", "720p", "1080p"}
 SEEDANCE_READY_STATUSES = {"succeeded"}
-SEEDANCE_FAILED_STATUSES = {"failed", "error", "cancelled", "canceled", "rejected"}
+SEEDANCE_CANCELLED_STATUSES = {"cancelled", "canceled"}
+SEEDANCE_FAILED_STATUSES = {"failed", "error", "rejected"}
 
 
 def _clean_text(value: Any) -> str:
@@ -41,6 +42,10 @@ def _get_provider_defaults() -> dict[str, Any]:
         "path": os.getenv("VIDEO_PROVIDER_PATH", "/contents/generations/tasks").strip() or "/contents/generations/tasks",
         "status_path": os.getenv("VIDEO_PROVIDER_STATUS_PATH", "/contents/generations/tasks/{task_id}").strip()
         or "/contents/generations/tasks/{task_id}",
+        "list_path": os.getenv("VIDEO_PROVIDER_LIST_PATH", "/contents/generations/tasks").strip()
+        or "/contents/generations/tasks",
+        "delete_path": os.getenv("VIDEO_PROVIDER_DELETE_PATH", "/contents/generations/tasks/{task_id}").strip()
+        or "/contents/generations/tasks/{task_id}",
         "api_key": os.getenv("VIDEO_PROVIDER_API_KEY", "").strip(),
         "timeout_seconds": _to_int(os.getenv("VIDEO_PROVIDER_TIMEOUT_SECONDS", "300"), 300),
         "download_assets": os.getenv("VIDEO_PROVIDER_DOWNLOAD_ASSETS", "true").strip().lower() not in {"0", "false", "no"},
@@ -64,6 +69,8 @@ def _job_provider_payload(provider: dict[str, Any], request_body: dict[str, Any]
         "base_url": provider.get("base_url", ""),
         "path": provider.get("path", "/"),
         "status_path": provider.get("status_path", ""),
+        "list_path": provider.get("list_path", ""),
+        "delete_path": provider.get("delete_path", ""),
         "timeout_seconds": provider.get("timeout_seconds", 300),
         "download_assets": provider.get("download_assets", True),
         "request_body": request_body,
@@ -395,6 +402,8 @@ def _extract_seedance_remote_state(payload: dict[str, Any]) -> dict[str, Any]:
     normalized_status = remote_status.lower()
     if normalized_status in SEEDANCE_READY_STATUSES:
         local_status = "completed"
+    elif normalized_status in SEEDANCE_CANCELLED_STATUSES:
+        local_status = "cancelled"
     elif normalized_status in SEEDANCE_FAILED_STATUSES:
         local_status = "failed"
     else:
@@ -468,10 +477,11 @@ def _finalize_failed_job(
     *,
     message: str,
     code: str,
+    status: str = "failed",
     remote_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     updates: dict[str, Any] = {
-        "status": "failed",
+        "status": status,
         "error": {
             "message": message,
             "code": code,
@@ -486,6 +496,93 @@ def _finalize_failed_job(
         }
 
     return update_job(series_slug, job_id, updates)
+
+
+def _extract_seedance_task_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    candidates = [
+        payload.get("items"),
+        payload.get("data"),
+        payload.get("tasks"),
+        (payload.get("data") or {}).get("items") if isinstance(payload.get("data"), dict) else None,
+        (payload.get("data") or {}).get("tasks") if isinstance(payload.get("data"), dict) else None,
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, list):
+            return [dict(item) for item in candidate if isinstance(item, dict)]
+    return []
+
+
+def _task_id_matches_filter(task: dict[str, Any], task_ids: set[str]) -> bool:
+    if not task_ids:
+        return True
+    task_id = _clean_text(task.get("id") or task.get("task_id") or task.get("job_id") or "")
+    return task_id in task_ids
+
+
+def _fetch_seedance_task_list(
+    provider: dict[str, Any],
+    *,
+    page_size: int = 20,
+    page_token: str = "",
+    status: str = "",
+    task_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    base_url = _clean_text(provider.get("base_url", "")).rstrip("/")
+    if not base_url:
+        raise ValueError("缂哄皯 VIDEO_PROVIDER_BASE_URL 閰嶇疆")
+
+    list_path = _clean_text(provider.get("list_path", "")) or _clean_text(provider.get("path", "/")) or "/"
+    params: dict[str, Any] = {"page_size": max(1, min(100, _to_int(page_size, 20)))}
+    normalized_token = _clean_text(page_token)
+    normalized_status = _clean_text(status)
+    normalized_task_ids = [_clean_text(item) for item in (task_ids or []) if _clean_text(item)]
+
+    if normalized_token:
+        params["page_token"] = normalized_token
+    if normalized_status:
+        params["filter.status"] = normalized_status
+    if normalized_task_ids:
+        params["filter.ids"] = ",".join(normalized_task_ids)
+
+    response = requests.get(
+        _provider_url(base_url, list_path),
+        headers=_provider_headers(provider),
+        params=params,
+        timeout=int(provider.get("timeout_seconds", 300)),
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        raise ValueError(f"Seedance task list request failed: {response.text}") from exc
+
+    payload = response.json() if response.content else {}
+    if normalized_task_ids:
+        items = _extract_seedance_task_items(payload)
+        payload["items"] = [item for item in items if _task_id_matches_filter(item, set(normalized_task_ids))]
+    return payload
+
+
+def _delete_seedance_task(provider: dict[str, Any], task_id: str) -> dict[str, Any]:
+    base_url = _clean_text(provider.get("base_url", "")).rstrip("/")
+    if not base_url:
+        raise ValueError("Missing VIDEO_PROVIDER_BASE_URL config")
+    if not task_id:
+        raise ValueError("Remote task_id is empty")
+
+    delete_path = _clean_text(provider.get("delete_path", "")) or _clean_text(provider.get("status_path", "")) or "/"
+    resolved_path = delete_path.replace("{task_id}", task_id) if "{task_id}" in delete_path else f"{delete_path.rstrip('/')}/{task_id}"
+
+    response = requests.delete(
+        _provider_url(base_url, resolved_path),
+        headers=_provider_headers(provider),
+        timeout=int(provider.get("timeout_seconds", 300)),
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        raise ValueError(f"Seedance delete task request failed: {response.text}") from exc
+
+    return response.json() if response.content else {"id": task_id, "status": "cancelled"}
 
 
 def submit_video_job(series_slug: str, job_id: str, provider_override: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -588,6 +685,16 @@ def refresh_video_job(series_slug: str, job_id: str, provider_override: dict[str
             remote_payload=remote_payload,
         )
 
+    if remote_state["local_status"] == "cancelled":
+        return _finalize_failed_job(
+            series_slug,
+            job_id,
+            message=f"Remote job cancelled with status {remote_state['remote_status'] or 'cancelled'}",
+            code="REMOTE_JOB_CANCELLED",
+            status="cancelled",
+            remote_payload=remote_payload,
+        )
+
     if remote_state["local_status"] != "completed":
         raw_response_path = save_job_remote_response(series_slug, job_id, remote_payload)
         return update_job(
@@ -673,3 +780,62 @@ def create_video_job_from_snapshot(
         return job
 
     return submit_video_job(series_slug, job["id"], provider_override)
+
+
+def get_remote_video_task(series_slug: str, task_id: str, provider_override: dict[str, Any] | None = None) -> dict[str, Any]:
+    provider = _merge_provider_settings(provider_override)
+    return _fetch_seedance_task_status(provider, _clean_text(task_id))
+
+
+def list_remote_video_tasks(
+    series_slug: str,
+    *,
+    provider_override: dict[str, Any] | None = None,
+    page_size: int = 20,
+    page_token: str = "",
+    status: str = "",
+    task_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    provider = _merge_provider_settings(provider_override)
+    return _fetch_seedance_task_list(
+        provider,
+        page_size=page_size,
+        page_token=page_token,
+        status=status,
+        task_ids=task_ids,
+    )
+
+
+def delete_remote_video_task(
+    series_slug: str,
+    task_id: str,
+    *,
+    provider_override: dict[str, Any] | None = None,
+    job_id: str = "",
+) -> dict[str, Any]:
+    provider = _merge_provider_settings(provider_override)
+    payload = _delete_seedance_task(provider, _clean_text(task_id))
+
+    normalized_job_id = _clean_text(job_id)
+    if normalized_job_id:
+        job = get_job(series_slug, normalized_job_id)
+        if job is not None and _clean_text((job.get("remote") or {}).get("task_id", "")) == _clean_text(task_id):
+            raw_response_path = save_job_remote_response(series_slug, normalized_job_id, payload)
+            update_job(
+                series_slug,
+                normalized_job_id,
+                {
+                    "status": "cancelled",
+                    "remote": {
+                        "status": _clean_text(payload.get("status", "")) or "cancelled",
+                        "raw_response_path": raw_response_path,
+                        "raw_response": payload,
+                    },
+                    "error": {
+                        "message": "",
+                        "code": "",
+                    },
+                },
+            )
+
+    return payload
