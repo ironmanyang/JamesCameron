@@ -173,6 +173,8 @@ const loading = reactive({
   deleteJob: false,
   deleteRemoteTask: false,
   deleteSnapshot: false,
+  clearJobs: false,
+  clearSnapshots: false,
   createSceneDirectTask: false,
   createShotBatch: false,
   deleteShotBatch: false,
@@ -513,7 +515,7 @@ const storyboardDetailLoading = computed(
       loading.createSceneDirectTask)
 );
 const jobsListLoading = computed(
-  () => (loading.production && !state.jobs.length) || loading.deleteJob
+  () => (loading.production && !state.jobs.length) || loading.deleteJob || loading.clearJobs
 );
 const shotBatchesListLoading = computed(
   () =>
@@ -529,7 +531,7 @@ const remoteTasksListLoading = computed(
   () => loading.remoteTasks || loading.remoteTaskDetail || loading.deleteRemoteTask
 );
 const snapshotsListLoading = computed(
-  () => (loading.production && !state.snapshots.length) || loading.deleteSnapshot
+  () => (loading.production && !state.snapshots.length) || loading.deleteSnapshot || loading.clearSnapshots
 );
 const jobDetailSectionLoading = computed(
   () =>
@@ -3933,6 +3935,109 @@ async function handleDeleteSnapshot(item = state.selectedSnapshot) {
   }
 }
 
+async function handleClearJobs() {
+  if (!state.selectedSeriesSlug) {
+    setError("请先选择一个系列");
+    return;
+  }
+  if (!state.jobs.length) {
+    setError("当前没有可清空的任务草稿");
+    return;
+  }
+
+  const confirmed = await confirmDanger("确定清空当前系列下可删除的全部任务草稿吗？", "清空任务草稿");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.clearJobs = true;
+  try {
+    const targetJobs = [...state.jobs];
+    let deletedCount = 0;
+    const failedNotes = [];
+
+    for (const item of targetJobs) {
+      const jobId = String(item?.id || "").trim();
+      if (!jobId) {
+        continue;
+      }
+      try {
+        await deleteJob(state.selectedSeriesSlug, jobId);
+        deletedCount += 1;
+      } catch (error) {
+        failedNotes.push(`${jobId}：${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    if (state.selectedJobId && !targetJobs.some((item) => item.id === state.selectedJobId)) {
+      state.selectedJobId = "";
+      state.selectedJob = null;
+    }
+    await loadProductionData(state.selectedSeriesSlug);
+    await loadRemoteTasks(state.selectedSeriesSlug);
+
+    if (!deletedCount && failedNotes.length) {
+      throw new Error(failedNotes.join("；"));
+    }
+
+    setNotice(`已清空 ${deletedCount} 条任务草稿${failedNotes.length ? `，失败 ${failedNotes.length} 条` : ""}`);
+    state.error = failedNotes.join("\n");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.clearJobs = false;
+  }
+}
+
+async function handleClearSnapshots() {
+  if (!state.selectedSeriesSlug) {
+    setError("请先选择一个系列");
+    return;
+  }
+  if (!state.snapshots.length) {
+    setError("当前没有可清空的快照");
+    return;
+  }
+
+  const confirmed = await confirmDanger("确定清空当前系列下可删除的全部快照吗？", "清空快照");
+  if (!confirmed) {
+    return;
+  }
+
+  loading.clearSnapshots = true;
+  try {
+    const targetSnapshots = [...state.snapshots];
+    let deletedCount = 0;
+    const failedNotes = [];
+
+    for (const item of targetSnapshots) {
+      const snapshotId = String(item?.id || "").trim();
+      if (!snapshotId) {
+        continue;
+      }
+      try {
+        await deleteSnapshot(state.selectedSeriesSlug, snapshotId);
+        deletedCount += 1;
+      } catch (error) {
+        failedNotes.push(`${snapshotId}：${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    await loadProductionData(state.selectedSeriesSlug);
+
+    if (!deletedCount && failedNotes.length) {
+      throw new Error(failedNotes.join("；"));
+    }
+
+    setNotice(`已清空 ${deletedCount} 个快照${failedNotes.length ? `，失败 ${failedNotes.length} 个` : ""}`);
+    state.error = failedNotes.join("\n");
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.clearSnapshots = false;
+  }
+}
+
 async function handleAssembleShotPackage() {
   if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !state.selectedShotId) {
     setError("请先选择一个镜头");
@@ -6031,7 +6136,13 @@ onMounted(boot);
                 <p class="panel-kicker">Step 2</p>
                 <h3>快照</h3>
               </div>
-              <span class="pill">{{ state.snapshots.length ? `${state.snapshots.length} 个` : "0 个" }}</span>
+              <div class="inline-actions compact-actions">
+                <el-button class="action-button ghost danger compact-button"
+                  :disabled="loading.clearSnapshots || !state.snapshots.length" @click="handleClearSnapshots">
+                  {{ loading.clearSnapshots ? "清空中..." : "清空快照" }}
+                </el-button>
+                <span class="pill">{{ state.snapshots.length ? `${state.snapshots.length} 个` : "0 个" }}</span>
+              </div>
             </div>
 
             <div v-loading="snapshotsListLoading" element-loading-text="快照列表加载中..."
@@ -6104,7 +6215,13 @@ onMounted(boot);
                 <p class="panel-kicker">Step 3</p>
                 <h3>提交草稿</h3>
               </div>
-              <span class="pill">{{ state.jobs.length ? `${state.jobs.length} 个` : "0 个" }}</span>
+              <div class="inline-actions compact-actions">
+                <el-button class="action-button ghost danger compact-button"
+                  :disabled="loading.clearJobs || !state.jobs.length" @click="handleClearJobs">
+                  {{ loading.clearJobs ? "清空中..." : "清空草稿" }}
+                </el-button>
+                <span class="pill">{{ state.jobs.length ? `${state.jobs.length} 个` : "0 个" }}</span>
+              </div>
             </div>
 
             <div v-loading="jobsListLoading" element-loading-text="任务列表加载中..." :element-loading-svg="loadingSpinnerSvg"
@@ -7766,7 +7883,7 @@ h3 {
 }
 
 .inline-actions {
-  display: flex;
+  display: flex !important;
   gap: 6px;
   align-items: center;
   min-width: 0;
