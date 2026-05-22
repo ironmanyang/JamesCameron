@@ -1,17 +1,98 @@
+import { computed, ref } from "vue";
+
 const JSON_HEADERS = {
   "Content-Type": "application/json"
 };
 
-async function request(path, options = {}) {
-  const response = await fetch(path, options);
-  const payload = await response.json().catch(() => ({}));
+const activeRequestCount = ref(0);
 
-  if (!response.ok) {
-    const message = payload.detail || payload.message || `Request failed: ${response.status}`;
-    throw new Error(message);
+export const isApiBusy = computed(() => activeRequestCount.value > 0);
+export const apiBusyText = computed(() =>
+  activeRequestCount.value > 1 ? `正在处理 ${activeRequestCount.value} 个请求...` : "请求处理中..."
+);
+
+function requestLabel(path, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+  return `${method} ${path}`;
+}
+
+function extractMessage(value) {
+  if (!value) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => extractMessage(item)).filter(Boolean).join("；");
+  }
+  if (typeof value === "object") {
+    return [
+      extractMessage(value.detail),
+      extractMessage(value.message),
+      extractMessage(value.error),
+      extractMessage(value.raw_text),
+      extractMessage(value.errors)
+    ]
+      .filter(Boolean)
+      .join("；");
+  }
+  return String(value).trim();
+}
+
+async function parsePayload(response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return response.json().catch(() => null);
   }
 
-  return payload;
+  const text = await response.text().catch(() => "");
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw_text: text };
+  }
+}
+
+function buildHttpError(response, payload, path, options = {}) {
+  const label = requestLabel(path, options);
+  const payloadMessage = extractMessage(payload);
+  const fallback = `${label} failed: ${response.status} ${response.statusText}`.trim();
+  return new Error(payloadMessage ? `${payloadMessage} (${label})` : fallback);
+}
+
+function buildNetworkError(error, path, options = {}) {
+  const label = requestLabel(path, options);
+  const originalMessage =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown network error";
+  return new Error(`${label} failed: ${originalMessage}`, error instanceof Error ? { cause: error } : undefined);
+}
+
+async function request(path, options = {}) {
+  activeRequestCount.value += 1;
+
+  try {
+    const response = await fetch(path, options);
+    const payload = await parsePayload(response);
+
+    if (!response.ok) {
+      throw buildHttpError(response, payload, path, options);
+    }
+
+    return payload ?? {};
+  } catch (error) {
+    if (error instanceof Error && !/^TypeError\b/.test(error.name)) {
+      throw error;
+    }
+    throw buildNetworkError(error, path, options);
+  } finally {
+    activeRequestCount.value = Math.max(0, activeRequestCount.value - 1);
+  }
 }
 
 export function listSeries() {
@@ -154,25 +235,17 @@ export function generateCharacterAssets(seriesSlug, characterId, episodeIds = []
   });
 }
 
-export async function uploadCharacterSourceImages(seriesSlug, characterId, files) {
+export function uploadCharacterSourceImages(seriesSlug, characterId, files) {
   const formData = new FormData();
   formData.append("series_slug", seriesSlug);
   Array.from(files || []).forEach((file) => {
     formData.append("files", file);
   });
 
-  const response = await fetch(`/api/characters/${characterId}/source-images`, {
+  return request(`/api/characters/${characterId}/source-images`, {
     method: "POST",
     body: formData
   });
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const message = payload.detail || payload.message || `Request failed: ${response.status}`;
-    throw new Error(message);
-  }
-
-  return payload;
 }
 
 export function deleteCharacterSourceImage(seriesSlug, characterId, imagePath) {
@@ -314,7 +387,7 @@ export function assembleScenePackage(seriesSlug, storyboardId, sceneId, scenePay
   });
 }
 
-export async function uploadShotMediaImages(seriesSlug, storyboardId, target, files, shotId = "") {
+export function uploadShotMediaImages(seriesSlug, storyboardId, target, files, shotId = "") {
   const formData = new FormData();
   formData.append("series_slug", seriesSlug);
   formData.append("target", target);
@@ -325,18 +398,10 @@ export async function uploadShotMediaImages(seriesSlug, storyboardId, target, fi
     formData.append("files", file);
   });
 
-  const response = await fetch(`/api/storyboards/${storyboardId}/shot-media-images`, {
+  return request(`/api/storyboards/${storyboardId}/shot-media-images`, {
     method: "POST",
     body: formData
   });
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const message = payload.detail || payload.message || `Request failed: ${response.status}`;
-    throw new Error(message);
-  }
-
-  return payload;
 }
 
 export function createSnapshot(data) {

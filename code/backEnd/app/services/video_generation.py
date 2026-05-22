@@ -67,6 +67,7 @@ def _job_provider_payload(provider: dict[str, Any], request_body: dict[str, Any]
         "timeout_seconds": provider.get("timeout_seconds", 300),
         "download_assets": provider.get("download_assets", True),
         "request_body": request_body,
+        "submitted_request_body": provider.get("submitted_request_body", {}),
     }
 
 
@@ -227,7 +228,7 @@ def _build_seedance_request_body(provider: dict[str, Any], prompt_package: dict[
         "resolution": _normalize_seedance_resolution(video_payload.get("resolution", "")),
         "duration": _normalize_seedance_duration(video_payload.get("duration") or video_payload.get("duration_seconds", 5)),
         "count": _normalize_seedance_count(video_payload.get("count", 1)),
-        "generate_audio": _normalize_seedance_generate_audio(video_payload.get("generate_audio", False)),
+        "generate_audio": _normalize_seedance_generate_audio(video_payload.get("generate_audio", True)),
         "watermark": _normalize_seedance_watermark(video_payload.get("watermark", False)),
     }
 
@@ -524,6 +525,16 @@ def submit_video_job(series_slug: str, job_id: str, provider_override: dict[str,
 
     try:
         resolved_request_body = _materialize_request_body(series_slug, request_body)
+        update_job(
+            series_slug,
+            job_id,
+            {
+                "provider": {
+                    **_job_provider_payload(provider, request_body),
+                    "submitted_request_body": resolved_request_body,
+                }
+            },
+        )
         remote_payload = _submit_seedance_task(provider, resolved_request_body)
         return _finalize_submitted_job(series_slug, job_id, remote_payload)
     except ValueError as exc:

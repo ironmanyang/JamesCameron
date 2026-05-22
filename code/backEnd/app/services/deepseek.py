@@ -277,6 +277,8 @@ def analyze_script_with_deepseek(raw_text: str, episode_id: str, episode_name: s
 
     base_url = os.getenv("DEEPSEEK_BASE_URL", "https://www.packyapi.com/v1").rstrip("/")
     model = os.getenv("DEEPSEEK_SCRIPT_MODEL", "deepseek-v4-pro")
+    connect_timeout = int(os.getenv("DEEPSEEK_CONNECT_TIMEOUT_SECONDS", "40"))
+    read_timeout = int(os.getenv("DEEPSEEK_SCRIPT_TIMEOUT_SECONDS", "420"))
 
     response = requests.post(
         f"{base_url}/chat/completions",
@@ -299,7 +301,7 @@ def analyze_script_with_deepseek(raw_text: str, episode_id: str, episode_name: s
                 },
             ],
         },
-        timeout=180,
+        timeout=(connect_timeout, read_timeout),
     )
     try:
         response.raise_for_status()

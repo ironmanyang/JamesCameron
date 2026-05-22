@@ -1,4 +1,8 @@
+import os
+import re
 from typing import Any
+
+import requests
 
 from app.storage.character_store import get_character, get_character_bible
 from app.storage.episode_store import load_parsed_script, load_raw_script
@@ -45,6 +49,15 @@ MEDIA_MODE_TEXT = {
     "first_last_frame": "首尾帧生成",
 }
 
+SUPPORTED_ANCHOR_MODES = {
+    "auto",
+    "face_priority",
+    "costume_priority",
+    "aura_priority",
+    "first_appearance",
+    "minimal",
+}
+
 
 def _clean_text(value: Any) -> str:
     return str(value or "").strip()
@@ -83,7 +96,7 @@ def _normalize_shot_media(shot: dict[str, Any]) -> dict[str, Any]:
         mode = "reference_image"
     return {
         "mode": mode,
-        "generate_audio": bool(raw_media.get("generate_audio", False)),
+        "generate_audio": bool(raw_media.get("generate_audio", True)),
         "first_frame_path": _clean_text(raw_media.get("first_frame_path", "")),
         "last_frame_path": _clean_text(raw_media.get("last_frame_path", "")),
         "reference_image_paths": _dedupe_text(_list_text(raw_media.get("reference_image_paths", []))),
@@ -208,6 +221,117 @@ def _normalize_shot_story(shot: dict[str, Any]) -> dict[str, str]:
         "beat": _clean_text(raw_story.get("beat", "")),
         "raw_script_excerpt": _clean_text(raw_story.get("raw_script_excerpt", "")),
     }
+
+
+def _normalize_anchor_mode(value: Any) -> str:
+    normalized = _clean_text(value)
+    return normalized if normalized in SUPPORTED_ANCHOR_MODES else "auto"
+
+
+def _normalize_shot_anchor_strategy(shot: dict[str, Any]) -> dict[str, Any]:
+    raw_strategy = shot.get("anchor_strategy") or {}
+    if not isinstance(raw_strategy, dict):
+        raw_strategy = {}
+
+    raw_per_character = raw_strategy.get("per_character") or {}
+    if not isinstance(raw_per_character, dict):
+        raw_per_character = {}
+
+    per_character: dict[str, str] = {}
+    for character_id, value in raw_per_character.items():
+        normalized_character_id = _clean_text(character_id)
+        if not normalized_character_id:
+            continue
+        normalized_mode = _normalize_anchor_mode(value.get("mode") if isinstance(value, dict) else value)
+        if normalized_mode == "auto":
+            continue
+        per_character[normalized_character_id] = normalized_mode
+
+    return {
+        "mode": _normalize_anchor_mode(raw_strategy.get("mode")),
+        "per_character": per_character,
+    }
+
+
+def _anchor_size_bucket(value: Any) -> str:
+    normalized = _clean_text(value)
+    if normalized in {"extreme_closeup", "closeup"}:
+        return "closeup"
+    if normalized == "medium":
+        return "medium"
+    return "wide"
+
+
+def _is_performance_heavy(script_context: dict[str, Any]) -> bool:
+    if script_context.get("dialogues") or []:
+        return True
+    if _clean_text(script_context.get("shot_emotion")):
+        return True
+    if _clean_text(script_context.get("shot_beat")):
+        return True
+    return False
+
+
+def _anchor_type_sequence(mode: str, size_bucket: str, performance_heavy: bool) -> list[str]:
+    if mode == "auto":
+        if size_bucket == "closeup":
+            return ["face", "aura"] if performance_heavy else ["face", "hair"]
+        if size_bucket == "medium":
+            return ["face", "aura"] if performance_heavy else ["face", "costume"]
+        return ["costume", "aura"]
+    if mode == "face_priority":
+        if size_bucket == "closeup":
+            return ["face", "hair"]
+        return ["face", "costume"]
+    if mode == "costume_priority":
+        if size_bucket == "closeup":
+            return ["face", "costume"]
+        if size_bucket == "medium":
+            return ["costume", "face"]
+        return ["costume", "aura"]
+    if mode == "aura_priority":
+        if size_bucket == "wide":
+            return ["costume", "aura"]
+        return ["face", "aura"]
+    if mode == "first_appearance":
+        if size_bucket == "closeup":
+            return ["face", "hair", "aura"]
+        if size_bucket == "medium":
+            return ["face", "hair", "costume"]
+        return ["costume", "aura", "face"]
+    if mode == "minimal":
+        return ["face"] if size_bucket != "wide" else ["costume"]
+    return ["face", "costume"]
+
+
+def _anchor_fallback_sequence(size_bucket: str) -> list[str]:
+    if size_bucket == "closeup":
+        return ["face", "hair", "costume", "aura"]
+    if size_bucket == "medium":
+        return ["face", "costume", "hair", "aura"]
+    return ["costume", "aura", "face", "hair"]
+
+
+def _anchor_text_limit(mode: str, character_index: int, character_count: int) -> int:
+    if character_count <= 1:
+        if mode == "first_appearance":
+            return 3
+        if mode == "minimal":
+            return 1
+        return 2
+    if character_count == 2:
+        if character_index == 0:
+            if mode == "first_appearance":
+                return 3
+            if mode == "minimal":
+                return 1
+            return 2
+        if mode == "first_appearance":
+            return 2
+        return 1
+    if character_index == 0:
+        return 1 if mode == "minimal" else 2
+    return 0 if mode == "minimal" else 1
 
 
 def _resolve_script_context(series_slug: str, episode_id: str, scene_id: str, shot: dict[str, Any]) -> dict[str, Any]:
@@ -514,19 +638,44 @@ def _build_media_references(
     return limited, warnings
 
 
-def _compose_subject_features(block: dict[str, Any]) -> str:
-    anchors = block.get("anchors", {})
-    features = _dedupe_text(
-        [
-            anchors.get("face", ""),
-            anchors.get("hair", ""),
-            anchors.get("costume", ""),
-            anchors.get("aura", ""),
-            block.get("summary", ""),
-        ],
-        limit=3,
-    )
-    return _join_cn(features)
+def _compose_subject_features(
+    block: dict[str, Any],
+    *,
+    mode: str,
+    size_bucket: str,
+    performance_heavy: bool,
+    character_index: int,
+    character_count: int,
+) -> str:
+    limit = _anchor_text_limit(mode, character_index, character_count)
+    if limit <= 0:
+        return ""
+
+    anchors = block.get("anchors", {}) or {}
+    requested_types = _anchor_type_sequence(mode, size_bucket, performance_heavy)
+    fallback_types = _anchor_fallback_sequence(size_bucket)
+
+    features: list[str] = []
+    used_types: set[str] = set()
+
+    for anchor_type in [*requested_types, *fallback_types]:
+        normalized_type = _clean_text(anchor_type)
+        if not normalized_type or normalized_type in used_types:
+            continue
+        used_types.add(normalized_type)
+        feature_text = _compact_prompt_fragment(anchors.get(normalized_type, ""), max_parts=3, max_chars=40)
+        if not feature_text or feature_text in features:
+            continue
+        features.append(feature_text)
+        if len(features) >= limit:
+            break
+
+    if len(features) < limit:
+        summary = _compact_prompt_fragment(_normalize_character_summary(block.get("summary", "")), max_parts=2, max_chars=32)
+        if summary and summary not in features:
+            features.append(summary)
+
+    return _join_cn(features[:limit])
 
 
 def _describe_dialogue(dialogues: list[dict[str, Any]]) -> str:
@@ -597,6 +746,9 @@ def _build_seedance_prompt(
     visual = shot.get("visual") or {}
     scene_profile = scene_block.get("visual_profile", {})
     mode = shot_media.get("mode", "reference_image")
+    anchor_strategy = _normalize_shot_anchor_strategy(shot)
+    size_bucket = _anchor_size_bucket(visual.get("shot_size", ""))
+    performance_heavy = _is_performance_heavy(script_context)
     media_labels_by_source: dict[tuple[str, str], list[str]] = {}
     for item in media_references:
         key = (item.get("source_kind", ""), item.get("source_id", ""))
@@ -609,11 +761,21 @@ def _build_seedance_prompt(
 
     if mode == "reference_image":
         subject_lines: list[str] = []
-        for block in character_blocks:
+        reference_character_blocks = [
+            block for block in character_blocks if media_labels_by_source.get(("character", block["id"]), [])
+        ]
+        character_count = len(reference_character_blocks)
+        for character_index, block in enumerate(reference_character_blocks):
             labels = media_labels_by_source.get(("character", block["id"]), [])
-            if not labels:
-                continue
-            feature_text = _compose_subject_features(block)
+            effective_mode = anchor_strategy["per_character"].get(block["id"], anchor_strategy["mode"])
+            feature_text = _compose_subject_features(
+                block,
+                mode=effective_mode,
+                size_bucket=size_bucket,
+                performance_heavy=performance_heavy,
+                character_index=character_index,
+                character_count=character_count,
+            )
             subject_lines.append(
                 f"{_reference_tokens(labels)}中的角色定义为{block['name']}，保持{feature_text or '角色外观、体态与身份特征'}稳定。"
             )
@@ -740,6 +902,324 @@ def _build_seedance_prompt(
     return prompt_text, constraints
 
 
+def _compose_subject_features(
+    block: dict[str, Any],
+    *,
+    mode: str,
+    size_bucket: str,
+    performance_heavy: bool,
+    character_index: int,
+    character_count: int,
+) -> str:
+    limit = _anchor_text_limit(mode, character_index, character_count)
+    if limit <= 0:
+        return ""
+
+    anchors = block.get("anchors", {}) or {}
+    requested_types = _anchor_type_sequence(mode, size_bucket, performance_heavy)
+    fallback_types = _anchor_fallback_sequence(size_bucket)
+
+    features: list[str] = []
+    used_types: set[str] = set()
+
+    for anchor_type in [*requested_types, *fallback_types]:
+        normalized_type = _clean_text(anchor_type)
+        if not normalized_type or normalized_type in used_types:
+            continue
+        used_types.add(normalized_type)
+        feature_text = _compact_prompt_fragment(anchors.get(normalized_type, ""), max_parts=3, max_chars=40)
+        if not feature_text or feature_text in features:
+            continue
+        features.append(feature_text)
+        if len(features) >= limit:
+            break
+
+    if len(features) < limit:
+        summary = _compact_prompt_fragment(_normalize_character_summary(block.get("summary", "")), max_parts=2, max_chars=32)
+        if summary and summary not in features:
+            features.append(summary)
+
+    return _join_cn(features[:limit])
+
+
+def _build_mode_prompt_intro(shot_media: dict[str, Any], media_references: list[dict[str, Any]]) -> list[str]:
+    labels_by_role: dict[str, list[str]] = {}
+    for item in media_references:
+        labels_by_role.setdefault(item.get("role", ""), []).append(item.get("label", ""))
+
+    intro_sections: list[str] = []
+    mode = shot_media.get("mode", "reference_image")
+    first_frame_labels = labels_by_role.get("first_frame", [])
+    last_frame_labels = labels_by_role.get("last_frame", [])
+    image_labels = labels_by_role.get("reference_image", [])
+
+    if mode == "first_frame" and first_frame_labels:
+        intro_sections.append(f"首尾帧绑定：{_reference_token(first_frame_labels[0])} 为首帧，保持开场主体、动作起点和构图关系稳定。")
+    elif mode == "first_last_frame" and first_frame_labels:
+        if last_frame_labels:
+            intro_sections.append(
+                f"首尾帧绑定：{_reference_token(first_frame_labels[0])} 为首帧，{_reference_token(last_frame_labels[0])} 为尾帧，生成两者之间自然连贯的动作与镜头过渡。"
+            )
+        else:
+            intro_sections.append(f"首尾帧绑定：{_reference_token(first_frame_labels[0])} 为首帧，尾帧未提供，请根据剧情自然完成后续动作。")
+    elif mode == "reference_image" and image_labels:
+        role_segments: list[str] = []
+        for item in media_references:
+            if item.get("source_kind") == "character":
+                role_segments.append(f"{_reference_token(item.get('label', ''))}对应角色{item.get('source_name', '')}")
+            elif item.get("source_kind") == "scene":
+                role_segments.append(f"{_reference_token(item.get('label', ''))}对应场景{item.get('source_name', '')}")
+        intro_sections.append("参考图绑定：" + "，".join(_dedupe_text(role_segments)) + "。")
+    elif mode == "text_only":
+        intro_sections.append("纯文字生成：仅依据文字描述生成，不使用任何图像参考。")
+
+    return intro_sections
+
+
+def _build_character_consistency_line(
+    *,
+    block: dict[str, Any],
+    labels: list[str],
+    feature_text: str,
+) -> str:
+    label_text = _reference_tokens(labels)
+    fallback = "整体外形、表情气质和身份特征稳定"
+    return f"保持{block['name']}与{label_text}一致，{feature_text or fallback}。"
+
+
+def _build_scene_consistency_line(
+    *,
+    scene_block: dict[str, Any],
+    scene_labels: list[str],
+    script_context: dict[str, Any],
+    scene_profile: dict[str, Any],
+) -> str:
+    scene_name = _clean_text(scene_block.get("name", ""))
+    label_text = _reference_tokens(scene_labels)
+    scene_parts = _dedupe_text(
+        [
+            _compact_prompt_fragment(script_context.get("scene_location"), max_parts=1, max_chars=16),
+            _compact_prompt_fragment(scene_profile.get("lighting", ""), max_parts=2, max_chars=24),
+            _compact_prompt_fragment(scene_profile.get("atmosphere", ""), max_parts=2, max_chars=20),
+            _join_cn(_dedupe_text(_list_text(scene_profile.get("key_props")), limit=2), sep="、"),
+        ],
+        limit=3,
+    )
+    if scene_parts:
+        return f"保持{scene_name}与{label_text}一致，延续" + "、".join(scene_parts) + "。"
+    return f"保持{scene_name}与{label_text}一致，延续空间关系、环境气质和布光基调。"
+
+
+def _build_story_basis_line(script_context: dict[str, Any]) -> str:
+    raw_script_excerpt = _clean_text(script_context.get("raw_script_excerpt"))
+    dialogue_excerpt = _clean_text(script_context.get("dialogue_excerpt"))
+    if raw_script_excerpt:
+        return "剧情依据：\n" + raw_script_excerpt
+    if dialogue_excerpt:
+        return "剧情依据：" + dialogue_excerpt + "。"
+    return ""
+
+
+def _build_action_line(
+    *,
+    shot_description: str,
+    shot_beat: str,
+    shot_emotion: str,
+    dialogue_text: str,
+) -> str:
+    action_parts = _dedupe_text(
+        [
+            _clean_text(shot_description).rstrip("，。；; "),
+            shot_beat and _clean_text(f"重点表现{shot_beat}").rstrip("，。；; "),
+            shot_emotion and _clean_text(f"情绪为{shot_emotion}").rstrip("，。；; "),
+            _clean_text(dialogue_text).rstrip("，。；; "),
+        ]
+    )
+    if not action_parts:
+        return "镜头内容：围绕当前剧情节点推进角色动作与情绪变化，动作自然连贯。"
+    return "镜头内容：" + "，".join(action_parts) + "。"
+
+
+def _build_scene_and_camera_line(
+    *,
+    script_context: dict[str, Any],
+    scene_profile: dict[str, Any],
+    shot_size_text: str,
+    angle_text: str,
+    movement_text: str,
+    lens_text: str,
+    depth_of_field_text: str,
+    style_text: str,
+) -> str:
+    scene_parts = _dedupe_text(
+        [
+            _compact_prompt_fragment(script_context.get("scene_location"), max_parts=1, max_chars=16),
+            _compact_prompt_fragment(scene_profile.get("time", ""), max_parts=2, max_chars=20),
+            _compact_prompt_fragment(scene_profile.get("lighting", ""), max_parts=2, max_chars=24),
+            _compact_prompt_fragment(scene_profile.get("atmosphere", ""), max_parts=2, max_chars=20),
+            _join_cn(_dedupe_text(_list_text(scene_profile.get("key_props")), limit=2), sep="、"),
+            _compact_prompt_fragment(style_text, max_parts=2, max_chars=20),
+        ],
+        limit=4,
+    )
+    camera_parts = _dedupe_text(
+        [
+            shot_size_text,
+            angle_text,
+            movement_text,
+            lens_text,
+            depth_of_field_text,
+        ]
+    )
+
+    scene_clause = ""
+    if scene_parts:
+        scene_clause = "保持场景中的" + "、".join(scene_parts) + "。"
+    camera_clause = ""
+    if camera_parts:
+        camera_clause = "镜头语言使用" + "，".join(camera_parts) + "。"
+    return "场景与镜头语言：" + scene_clause + camera_clause
+
+
+def _build_seedance_prompt(
+    *,
+    scene_block: dict[str, Any],
+    character_blocks: list[dict[str, Any]],
+    media_references: list[dict[str, Any]],
+    script_context: dict[str, Any],
+    shot: dict[str, Any],
+    shot_media: dict[str, Any],
+    warnings: list[str],
+) -> tuple[str, list[str]]:
+    visual = shot.get("visual") or {}
+    scene_profile = scene_block.get("visual_profile", {})
+    mode = shot_media.get("mode", "reference_image")
+    anchor_strategy = _normalize_shot_anchor_strategy(shot)
+    size_bucket = _anchor_size_bucket(visual.get("shot_size", ""))
+    performance_heavy = _is_performance_heavy(script_context)
+    media_labels_by_source: dict[tuple[str, str], list[str]] = {}
+    for item in media_references:
+        key = (item.get("source_kind", ""), item.get("source_id", ""))
+        media_labels_by_source.setdefault(key, []).append(item.get("label", ""))
+
+    prompt_sections: list[str] = []
+    prompt_sections.extend(_build_mode_prompt_intro(shot_media, media_references))
+
+    if mode == "reference_image":
+        consistency_lines: list[str] = []
+        reference_character_blocks = [
+            block for block in character_blocks if media_labels_by_source.get(("character", block["id"]), [])
+        ]
+        character_count = len(reference_character_blocks)
+        for character_index, block in enumerate(reference_character_blocks):
+            labels = media_labels_by_source.get(("character", block["id"]), [])
+            effective_mode = anchor_strategy["per_character"].get(block["id"], anchor_strategy["mode"])
+            feature_text = _compose_subject_features(
+                block,
+                mode=effective_mode,
+                size_bucket=size_bucket,
+                performance_heavy=performance_heavy,
+                character_index=character_index,
+                character_count=character_count,
+            )
+            consistency_lines.append(
+                _build_character_consistency_line(
+                    block=block,
+                    labels=labels,
+                    feature_text=feature_text,
+                )
+            )
+
+        scene_labels = media_labels_by_source.get(("scene", scene_block["id"]), [])
+        if scene_labels:
+            consistency_lines.append(
+                _build_scene_consistency_line(
+                    scene_block=scene_block,
+                    scene_labels=scene_labels,
+                    script_context=script_context,
+                    scene_profile=scene_profile,
+                )
+            )
+
+        if consistency_lines:
+            prompt_sections.append("一致性要求：" + "".join(consistency_lines))
+
+    story_basis = _build_story_basis_line(script_context)
+    if story_basis:
+        prompt_sections.append(story_basis)
+
+    shot_description = _clean_text(script_context.get("shot_description"))
+    shot_emotion = _clean_text(script_context.get("shot_emotion"))
+    shot_beat = _clean_text(script_context.get("shot_beat"))
+    dialogue_text = _describe_dialogue(script_context.get("dialogues") or [])
+
+    movement_text = _translate_visual_term(visual.get("camera_movement", ""), CAMERA_MOVEMENT_TEXT) or "固定镜头"
+    angle_text = _translate_visual_term(visual.get("camera_angle", ""), CAMERA_ANGLE_TEXT) or "平视"
+    shot_size_text = _translate_visual_term(visual.get("shot_size", ""), SHOT_SIZE_TEXT) or "中景"
+    style_text = _translate_visual_term(visual.get("style", ""), STYLE_TEXT) or _clean_text(visual.get("style", ""))
+    depth_of_field_text = _translate_visual_term(visual.get("depth_of_field", ""), DEPTH_OF_FIELD_TEXT)
+    lens_text = _clean_text(visual.get("lens", ""))
+
+    prompt_sections.append(
+        _build_action_line(
+            shot_description=shot_description,
+            shot_beat=shot_beat,
+            shot_emotion=shot_emotion,
+            dialogue_text=dialogue_text,
+        )
+    )
+    prompt_sections.append(
+        _build_scene_and_camera_line(
+            script_context=script_context,
+            scene_profile=scene_profile,
+            shot_size_text=shot_size_text,
+            angle_text=angle_text,
+            movement_text=movement_text,
+            lens_text=lens_text,
+            depth_of_field_text=depth_of_field_text,
+            style_text=style_text,
+        )
+    )
+
+    constraints = _dedupe_text(
+        [
+            "人物外形稳定，不要改设定，不要变形",
+            "动作自然流畅，不僵硬，不抽搐，不闪烁",
+            "同一画面不要出现重复人物或双胞胎效果",
+            "不要出现肢体畸形、穿模、额外手脚",
+            "不要出现字幕、Logo、水印",
+        ]
+    )
+    prompt_sections.append("约束：" + "，".join(constraints) + "。")
+
+    if warnings:
+        prompt_sections.append("备注：" + "；".join(warnings) + "。")
+
+    prompt_text = "\n".join([section for section in prompt_sections if _clean_text(section)])
+    return prompt_text, constraints
+
+
+def _compact_prompt_fragment(value: Any, *, max_parts: int = 2, max_chars: int = 36) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+
+    parts: list[str] = []
+    for chunk in re.split(r"[，。；;、/]+", text):
+        normalized = _clean_text(chunk)
+        if not normalized or normalized in parts:
+            continue
+        parts.append(normalized)
+        if len(parts) >= max_parts:
+            break
+
+    compact = "，".join(parts) if parts else text
+    compact = compact.replace("，，", "，").strip("，。；; ")
+    if len(compact) > max_chars:
+        compact = compact[:max_chars].rstrip("，。；; ")
+    return compact
+
+
 def _build_video_payload(
     *,
     prompt_text: str,
@@ -768,6 +1248,250 @@ def _build_video_payload(
     }
 
 
+SHOT_PROMPT_SYSTEM_PROMPT = """
+你是视频生成提示词润色助手。你的任务是把结构化的单镜头信息改写成一段可直接提交给 Seedance 2.0 的中文提示词。
+要求：
+1. 只输出最终提示词，不要解释，不要 Markdown，不要代码块。
+2. 只能润色表达，不能改动角色名、场景名、参考图编号、镜头类型、运镜、景别、镜头参数、台词内容。
+3. 必须保留所有 @图像N 的引用，不要改编号，不要遗漏。
+4. 不要新增剧情，不要扩写成多镜头，不要发散出原输入没有的设定。
+5. 重点让语言更自然、更像视频模型的拍摄指令，而不是数据库字段拼接。
+6. 输出应围绕：参考绑定、一致性要求、剧情依据、镜头内容、场景与镜头语言、约束。
+""".strip()
+
+
+def _build_shot_prompt_skeleton(
+    *,
+    scene_block: dict[str, Any],
+    character_blocks: list[dict[str, Any]],
+    media_references: list[dict[str, Any]],
+    script_context: dict[str, Any],
+    shot: dict[str, Any],
+    shot_media: dict[str, Any],
+    warnings: list[str],
+) -> tuple[dict[str, Any], list[str]]:
+    visual = shot.get("visual") or {}
+    scene_profile = scene_block.get("visual_profile", {})
+    mode = shot_media.get("mode", "reference_image")
+    anchor_strategy = _normalize_shot_anchor_strategy(shot)
+    size_bucket = _anchor_size_bucket(visual.get("shot_size", ""))
+    performance_heavy = _is_performance_heavy(script_context)
+    media_labels_by_source: dict[tuple[str, str], list[str]] = {}
+    for item in media_references:
+        key = (item.get("source_kind", ""), item.get("source_id", ""))
+        media_labels_by_source.setdefault(key, []).append(item.get("label", ""))
+
+    consistency_lines: list[str] = []
+    if mode == "reference_image":
+        reference_character_blocks = [
+            block for block in character_blocks if media_labels_by_source.get(("character", block["id"]), [])
+        ]
+        character_count = len(reference_character_blocks)
+        for character_index, block in enumerate(reference_character_blocks):
+            labels = media_labels_by_source.get(("character", block["id"]), [])
+            effective_mode = anchor_strategy["per_character"].get(block["id"], anchor_strategy["mode"])
+            feature_text = _compose_subject_features(
+                block,
+                mode=effective_mode,
+                size_bucket=size_bucket,
+                performance_heavy=performance_heavy,
+                character_index=character_index,
+                character_count=character_count,
+            )
+            consistency_lines.append(
+                _build_character_consistency_line(
+                    block=block,
+                    labels=labels,
+                    feature_text=feature_text,
+                )
+            )
+
+        scene_labels = media_labels_by_source.get(("scene", scene_block["id"]), [])
+        if scene_labels:
+            consistency_lines.append(
+                _build_scene_consistency_line(
+                    scene_block=scene_block,
+                    scene_labels=scene_labels,
+                    script_context=script_context,
+                    scene_profile=scene_profile,
+                )
+            )
+
+    shot_description = _clean_text(script_context.get("shot_description"))
+    shot_emotion = _clean_text(script_context.get("shot_emotion"))
+    shot_beat = _clean_text(script_context.get("shot_beat"))
+    dialogue_text = _describe_dialogue(script_context.get("dialogues") or [])
+
+    movement_text = _translate_visual_term(visual.get("camera_movement", ""), CAMERA_MOVEMENT_TEXT) or "固定镜头"
+    angle_text = _translate_visual_term(visual.get("camera_angle", ""), CAMERA_ANGLE_TEXT) or "平视"
+    shot_size_text = _translate_visual_term(visual.get("shot_size", ""), SHOT_SIZE_TEXT) or "中景"
+    style_text = _translate_visual_term(visual.get("style", ""), STYLE_TEXT) or _clean_text(visual.get("style", ""))
+    depth_of_field_text = _translate_visual_term(visual.get("depth_of_field", ""), DEPTH_OF_FIELD_TEXT)
+    lens_text = _clean_text(visual.get("lens", ""))
+
+    constraints = _dedupe_text(
+        [
+            "人物外形稳定，不要改设定，不要变形",
+            "动作自然流畅，不僵硬，不抽搐，不闪烁",
+            "同一画面不要出现重复人物或双胞胎效果",
+            "不要出现肢体畸形、穿模、额外手脚",
+            "不要出现字幕、Logo、水印",
+        ]
+    )
+
+    skeleton = {
+        "mode_intro": _build_mode_prompt_intro(shot_media, media_references),
+        "consistency_lines": consistency_lines,
+        "story_basis": _build_story_basis_line(script_context),
+        "action_line": _build_action_line(
+            shot_description=shot_description,
+            shot_beat=shot_beat,
+            shot_emotion=shot_emotion,
+            dialogue_text=dialogue_text,
+        ),
+        "scene_camera_line": _build_scene_and_camera_line(
+            script_context=script_context,
+            scene_profile=scene_profile,
+            shot_size_text=shot_size_text,
+            angle_text=angle_text,
+            movement_text=movement_text,
+            lens_text=lens_text,
+            depth_of_field_text=depth_of_field_text,
+            style_text=style_text,
+        ),
+        "constraints": constraints,
+        "warnings": [_clean_text(item) for item in warnings if _clean_text(item)],
+    }
+    return skeleton, constraints
+
+
+def _build_shot_prompt_fallback(skeleton: dict[str, Any]) -> str:
+    sections: list[str] = []
+    sections.extend(skeleton.get("mode_intro") or [])
+    if skeleton.get("consistency_lines"):
+        sections.append("一致性要求：" + "".join(skeleton["consistency_lines"]))
+    if _clean_text(skeleton.get("story_basis", "")):
+        sections.append(_clean_text(skeleton["story_basis"]))
+    if _clean_text(skeleton.get("action_line", "")):
+        sections.append(_clean_text(skeleton["action_line"]))
+    if _clean_text(skeleton.get("scene_camera_line", "")):
+        sections.append(_clean_text(skeleton["scene_camera_line"]))
+    if skeleton.get("constraints"):
+        sections.append("约束：" + "，".join(skeleton["constraints"]) + "。")
+    if skeleton.get("warnings"):
+        sections.append("备注：" + "；".join(skeleton["warnings"]) + "。")
+    return "\n".join([section for section in sections if _clean_text(section)])
+
+
+def _call_deepseek_shot_prompt(skeleton: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("Missing DEEPSEEK_API_KEY")
+
+    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://www.packyapi.com/v1").rstrip("/")
+    model = os.getenv("DEEPSEEK_SHOT_PROMPT_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
+
+    user_content = (
+        "请根据以下单镜头结构化输入，输出最终可提交的中文提示词。\n\n"
+        f"参考绑定：{chr(10).join(skeleton.get('mode_intro') or [])}\n"
+        f"一致性要求：{''.join(skeleton.get('consistency_lines') or [])}\n"
+        f"{skeleton.get('story_basis', '')}\n"
+        f"{skeleton.get('action_line', '')}\n"
+        f"{skeleton.get('scene_camera_line', '')}\n"
+        f"约束：{'，'.join(skeleton.get('constraints') or [])}\n"
+        f"备注：{'；'.join(skeleton.get('warnings') or [])}\n"
+    ).strip()
+
+    try:
+        response = requests.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "temperature": 0.2,
+                "max_tokens": 1200,
+                "messages": [
+                    {"role": "system", "content": SHOT_PROMPT_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ],
+            },
+            timeout=180,
+        )
+    except requests.RequestException as exc:
+        raise ValueError(f"DeepSeek 单镜头提示词润色请求失败：{exc}") from exc
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        raise ValueError(f"DeepSeek shot prompt refine failed: {response.text}") from exc
+
+    payload = response.json()
+    content = _clean_text(((payload.get("choices") or [{}])[0].get("message") or {}).get("content", ""))
+    if not content:
+        raise ValueError("DeepSeek returned empty shot prompt")
+    return content, {"model": model, "base_url": base_url}
+
+
+def _build_shot_prompt(
+    *,
+    scene_block: dict[str, Any],
+    character_blocks: list[dict[str, Any]],
+    media_references: list[dict[str, Any]],
+    script_context: dict[str, Any],
+    shot: dict[str, Any],
+    shot_media: dict[str, Any],
+    warnings: list[str],
+) -> dict[str, Any]:
+    skeleton, constraints = _build_shot_prompt_skeleton(
+        scene_block=scene_block,
+        character_blocks=character_blocks,
+        media_references=media_references,
+        script_context=script_context,
+        shot=shot,
+        shot_media=shot_media,
+        warnings=warnings,
+    )
+    fallback_prompt = _build_shot_prompt_fallback(skeleton)
+    ai_refined_prompt = ""
+    selected_prompt = fallback_prompt
+    selected_prompt_variant = "fallback_template"
+    try:
+        ai_refined_prompt, meta = _call_deepseek_shot_prompt(skeleton)
+        selected_prompt = ai_refined_prompt
+        selected_prompt_variant = "ai_refined"
+        prompt_generation = {
+            "mode": "ai_refined",
+            "provider": "deepseek",
+            "model": meta["model"],
+            "fallback_used": False,
+            "error": "",
+        }
+    except ValueError as exc:
+        prompt_generation = {
+            "mode": "fallback_template",
+            "provider": "deepseek",
+            "model": os.getenv("DEEPSEEK_SHOT_PROMPT_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro",
+            "fallback_used": True,
+            "error": str(exc),
+        }
+        if str(exc) not in skeleton["warnings"]:
+            skeleton["warnings"].append(str(exc))
+
+    return {
+        "positive": selected_prompt,
+        "prompt_variants": {
+            "ai_refined": ai_refined_prompt,
+            "fallback_template": fallback_prompt,
+        },
+        "selected_prompt_variant": selected_prompt_variant,
+        "constraints": constraints,
+        "prompt_input": skeleton,
+        "prompt_generation": prompt_generation,
+    }
+
+
 def assemble_shot_prompt_package(series_slug: str, storyboard_id: str, shot_id: str) -> dict[str, Any]:
     storyboard = get_storyboard(series_slug, storyboard_id)
     if storyboard is None:
@@ -785,8 +1509,9 @@ def assemble_shot_prompt_package(series_slug: str, storyboard_id: str, shot_id: 
     character_blocks, character_negatives = _assemble_character_blocks(series_slug, shot.get("characters") or [])
     script_context = _resolve_script_context(series_slug, episode_id, scene_id, shot)
     media_references, warnings = _build_media_references(shot_media, character_blocks, scene_block)
+    anchor_strategy = _normalize_shot_anchor_strategy(shot)
 
-    seedance_prompt, seedance_constraints = _build_seedance_prompt(
+    prompt_bundle = _build_shot_prompt(
         scene_block=scene_block,
         character_blocks=character_blocks,
         media_references=media_references,
@@ -804,18 +1529,23 @@ def assemble_shot_prompt_package(series_slug: str, storyboard_id: str, shot_id: 
     negative_prompt = "; ".join(negative_parts)
 
     assembled = {
-        "positive": seedance_prompt,
+        "positive": prompt_bundle["positive"],
         "negative": negative_prompt,
         "reference_images": [item["path"] for item in media_references if item.get("type") == "image"],
         "media_references": media_references,
-        "constraints": seedance_constraints,
-        "warnings": warnings,
+        "constraints": prompt_bundle["constraints"],
+        "warnings": prompt_bundle["prompt_input"].get("warnings") or warnings,
         "script_context": script_context,
         "scene_context": scene_block,
         "character_context": character_blocks,
         "shot_media": shot_media,
+        "anchor_strategy": anchor_strategy,
+        "prompt_input": prompt_bundle["prompt_input"],
+        "prompt_generation": prompt_bundle["prompt_generation"],
+        "prompt_variants": prompt_bundle["prompt_variants"],
+        "selected_prompt_variant": prompt_bundle["selected_prompt_variant"],
         "video_payload": _build_video_payload(
-            prompt_text=seedance_prompt,
+            prompt_text=prompt_bundle["positive"],
             negative_prompt=negative_prompt,
             media_references=media_references,
             visual=visual,
@@ -836,6 +1566,7 @@ def assemble_shot_prompt_package(series_slug: str, storyboard_id: str, shot_id: 
         shot_id,
         {
             "media": shot_media,
+            "anchor_strategy": anchor_strategy,
             "prompt_package": assembled,
             "dialogue": _normalize_dialogue_entries(script_context.get("dialogues") or []),
             "status": "package_ready",

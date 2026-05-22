@@ -58,6 +58,50 @@ const health = ref("checking");
 const characterSourceFiles = ref([]);
 const characterSourceInput = ref(null);
 const parsedScriptViewMode = ref("readable");
+const loadingSpinnerViewBox = "0 0 64 64";
+const loadingSpinnerSvg = `
+  <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="kling-loading-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#dffff2" stop-opacity="0.96" />
+        <stop offset="45%" stop-color="#74ff52" stop-opacity="1" />
+        <stop offset="100%" stop-color="#26d9ff" stop-opacity="0.94" />
+      </linearGradient>
+      <filter id="kling-loading-glow">
+        <feGaussianBlur stdDeviation="1.8" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#kling-loading-glow)">
+      <circle cx="32" cy="32" r="18" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="5" />
+      <path
+        d="M32 14
+           a18 18 0 0 1 0 36
+           a18 18 0 0 1 0 -36"
+        fill="none"
+        stroke="url(#kling-loading-gradient)"
+        stroke-linecap="round"
+        stroke-width="5.5"
+        stroke-dasharray="72 42"
+      >
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from="0 32 32"
+          to="360 32 32"
+          dur="0.9s"
+          repeatCount="indefinite"
+        />
+      </path>
+      <circle cx="32" cy="32" r="4.8" fill="#dffff2" fill-opacity="0.92">
+        <animate attributeName="r" values="4.2;5.2;4.2" dur="1.1s" repeatCount="indefinite" />
+      </circle>
+    </g>
+  </svg>
+`;
 let episodeScriptsRequestSeed = 0;
 let productionRequestSeed = 0;
 let shotsRequestSeed = 0;
@@ -124,7 +168,7 @@ const forms = reactive({
   sceneDescription: "",
   shotSceneId: "",
   shotInputMode: "reference_image",
-  shotGenerateAudio: false,
+  shotGenerateAudio: true,
   shotAspectRatio: "16:9",
   shotResolution: "1080p",
   shotGenerationCount: 1,
@@ -140,7 +184,9 @@ const forms = reactive({
   shotStoryEmotion: "",
   shotStoryBeat: "",
   shotStoryDialogue: "",
-  shotStoryRawExcerpt: ""
+  shotStoryRawExcerpt: "",
+  shotAnchorMode: "auto",
+  shotAnchorOverrides: {}
 });
 
 const inlineEditing = reactive({
@@ -158,7 +204,7 @@ const inlineEditing = reactive({
   shotId: "",
   shotSceneId: "",
   shotInputMode: "reference_image",
-  shotGenerateAudio: false,
+  shotGenerateAudio: true,
   shotAspectRatio: "16:9",
   shotResolution: "1080p",
   shotGenerationCount: 1,
@@ -175,7 +221,9 @@ const inlineEditing = reactive({
   shotStoryEmotion: "",
   shotStoryBeat: "",
   shotStoryDialogue: "",
-  shotStoryRawExcerpt: ""
+  shotStoryRawExcerpt: "",
+  shotAnchorMode: "auto",
+  shotAnchorOverrides: {}
 });
 
 const parsedShotEditing = reactive({
@@ -220,6 +268,17 @@ const shotInputModeOptions = [
 ];
 
 const supportedShotInputModes = new Set(shotInputModeOptions.map((item) => item.value));
+
+const shotAnchorModeOptions = [
+  { value: "auto", label: "自动" },
+  { value: "face_priority", label: "面部优先" },
+  { value: "costume_priority", label: "服装优先" },
+  { value: "aura_priority", label: "气质优先" },
+  { value: "first_appearance", label: "首次出场" },
+  { value: "minimal", label: "最简" }
+];
+
+const supportedShotAnchorModes = new Set(shotAnchorModeOptions.map((item) => item.value));
 
 const shotAspectRatioOptions = [
   { value: "21:9", label: "21:9" },
@@ -341,6 +400,84 @@ const selectedStoryboardProductionMode = computed(() =>
 );
 const selectedSceneDirectPackage = computed(() => selectedStoryboard.value?.scene_direct_package || null);
 const selectedShot = computed(() => state.shots.find((item) => item.id === state.selectedShotId) || null);
+const seriesListPanelLoading = computed(() => loading.boot || loading.series || loading.updateSeries || loading.deleteSeries);
+const seriesCreatePanelLoading = computed(() => loading.createSeries);
+const episodesPanelLoading = computed(
+  () => loading.boot || loading.production || loading.episodes || loading.createEpisode || loading.updateEpisode || loading.deleteEpisode
+);
+const rawScriptPanelLoading = computed(() => loading.boot || loading.scripts || loading.analyzeScript || loading.saveRaw);
+const parsedScriptPanelLoading = computed(
+  () => loading.boot || loading.scripts || loading.analyzeScript || loading.saveParsed || loading.importParsedShot
+);
+const characterCreatePanelLoading = computed(
+  () => loading.boot || loading.production || loading.createCharacter || loading.updateCharacter || loading.deleteCharacter
+);
+const sceneCreatePanelLoading = computed(
+  () => loading.boot || loading.production || loading.createScene || loading.updateScene || loading.deleteScene
+);
+const characterLabPanelLoading = computed(
+  () =>
+    loading.boot ||
+    loading.production ||
+    loading.characterAssets ||
+    loading.characterUpload ||
+    loading.deleteCharacterSourceImage ||
+    loading.characterBible
+);
+const sceneLabPanelLoading = computed(
+  () => loading.boot || loading.production || loading.sceneAssets || loading.scenePackage
+);
+const storyboardConfigPanelLoading = computed(
+  () =>
+    loading.boot ||
+    loading.production ||
+    loading.shots ||
+    loading.createStoryboard ||
+    loading.deleteStoryboard ||
+    loading.createShot ||
+    loading.updateShot ||
+    loading.deleteShot ||
+    loading.shotMediaUpload
+);
+const executionPanelLoading = computed(
+  () =>
+    loading.shotPackage ||
+    loading.sceneDirectPackage ||
+    loading.createRender ||
+    loading.createSceneDirectTask ||
+    loading.updateShot
+);
+const storyboardListLoading = computed(() => loading.production && !filteredStoryboards.value.length);
+const storyboardDetailLoading = computed(
+  () =>
+    Boolean(state.selectedStoryboardId) &&
+    (loading.production ||
+      loading.shots ||
+      loading.updateStoryboard ||
+      loading.deleteStoryboard ||
+      loading.createShot ||
+      loading.updateShot ||
+      loading.deleteShot ||
+      loading.shotMediaUpload ||
+      loading.shotPackage ||
+      loading.sceneDirectPackage ||
+      loading.createRender ||
+      loading.createSceneDirectTask)
+);
+const jobsListLoading = computed(
+  () => (loading.production && !state.jobs.length) || loading.deleteJob
+);
+const snapshotsListLoading = computed(
+  () => (loading.production && !state.snapshots.length) || loading.deleteSnapshot
+);
+const jobDetailSectionLoading = computed(
+  () =>
+    Boolean(state.selectedJobId) &&
+    (loading.jobDetail || loading.submitJob || loading.refreshJob)
+);
+const snapshotDetailSectionLoading = computed(
+  () => Boolean(state.selectedSnapshotId) && loading.snapshotDetail
+);
 const selectedJobComputed = computed(() => {
   if (state.selectedJob && state.selectedJob.id === state.selectedJobId) {
     return state.selectedJob;
@@ -348,6 +485,45 @@ const selectedJobComputed = computed(() => {
   return state.jobs.find((item) => item.id === state.selectedJobId) || null;
 });
 const selectedShotPromptPackage = computed(() => selectedShot.value?.prompt_package || null);
+const selectedShotPromptVariants = computed(() => {
+  const promptPackage = selectedShotPromptPackage.value || {};
+  const rawVariants =
+    promptPackage.prompt_variants && typeof promptPackage.prompt_variants === "object"
+      ? promptPackage.prompt_variants
+      : {};
+  const fallbackTemplate = String(rawVariants.fallback_template || promptPackage.positive || "").trim();
+  const aiRefined = String(rawVariants.ai_refined || "").trim();
+
+  return {
+    ai_refined: aiRefined,
+    fallback_template: fallbackTemplate
+  };
+});
+const selectedShotPromptVariant = computed(() => {
+  const promptPackage = selectedShotPromptPackage.value || {};
+  const variants = selectedShotPromptVariants.value;
+  const selectedVariant = String(promptPackage.selected_prompt_variant || "").trim();
+
+  if (selectedVariant === "ai_refined" && variants.ai_refined) {
+    return "ai_refined";
+  }
+  if (selectedVariant === "fallback_template" && variants.fallback_template) {
+    return "fallback_template";
+  }
+  if (variants.ai_refined && promptPackage.positive === variants.ai_refined) {
+    return "ai_refined";
+  }
+  if (variants.fallback_template && promptPackage.positive === variants.fallback_template) {
+    return "fallback_template";
+  }
+  if (variants.ai_refined) {
+    return "ai_refined";
+  }
+  return "fallback_template";
+});
+const selectedShotPromptPreview = computed(
+  () => selectedShotPromptVariants.value[selectedShotPromptVariant.value] || selectedShotPromptPackage.value?.positive || ""
+);
 const parsedScriptObject = computed(() => {
   try {
     return JSON.parse(state.parsedScriptText || "{}");
@@ -359,6 +535,14 @@ const parsedScriptReadableOutline = computed(() => parsedScriptObject.value?.rea
 const parsedScriptReadableScenes = computed(() => parsedScriptObject.value?.scenes || []);
 const selectedJobRequestBody = computed(() => normalizeSeedanceRequestBodyForDisplay(selectedJobComputed.value));
 const selectedJobRequestSummary = computed(() => buildSeedanceRequestSummary(selectedJobRequestBody.value));
+const selectedJobHasSubmittedRequest = computed(() => {
+  const submittedRequestBody = selectedJobComputed.value?.provider?.submitted_request_body;
+  return Boolean(
+    submittedRequestBody &&
+    typeof submittedRequestBody === "object" &&
+    Object.keys(submittedRequestBody).length
+  );
+});
 const selectedJobRequestText = computed(() => JSON.stringify(selectedJobRequestBody.value, null, 2));
 const selectedJobResponseText = computed(() =>
   JSON.stringify(selectedJobComputed.value?.remote?.raw_response || {}, null, 2)
@@ -522,6 +706,7 @@ function startShotEdit(item) {
   const media = item.media || {};
   const visual = item.visual || {};
   const story = item.story || {};
+  const anchorStrategy = item.anchor_strategy || {};
   inlineEditing.shotId = item.id;
   inlineEditing.shotSceneId = item.scene_id || "";
   inlineEditing.shotInputMode = normalizeShotInputMode(media.mode);
@@ -543,6 +728,11 @@ function startShotEdit(item) {
   inlineEditing.shotStoryBeat = story.beat || "";
   inlineEditing.shotStoryDialogue = serializeDialogueEntries(item.dialogue || []);
   inlineEditing.shotStoryRawExcerpt = story.raw_script_excerpt || "";
+  inlineEditing.shotAnchorMode = normalizeShotAnchorMode(anchorStrategy.mode);
+  inlineEditing.shotAnchorOverrides = normalizeShotAnchorOverrides(
+    anchorStrategy.per_character,
+    item.characters || []
+  );
   state.selectedShotId = item.id;
 }
 
@@ -550,7 +740,7 @@ function cancelShotEdit() {
   inlineEditing.shotId = "";
   inlineEditing.shotSceneId = "";
   inlineEditing.shotInputMode = "reference_image";
-  inlineEditing.shotGenerateAudio = false;
+  inlineEditing.shotGenerateAudio = true;
   inlineEditing.shotAspectRatio = "16:9";
   inlineEditing.shotResolution = "1080p";
   inlineEditing.shotGenerationCount = 1;
@@ -568,6 +758,8 @@ function cancelShotEdit() {
   inlineEditing.shotStoryBeat = "";
   inlineEditing.shotStoryDialogue = "";
   inlineEditing.shotStoryRawExcerpt = "";
+  inlineEditing.shotAnchorMode = "auto";
+  inlineEditing.shotAnchorOverrides = {};
 }
 
 function syncAssetCounts() {
@@ -602,6 +794,73 @@ function formatShotMovement(value) {
 
 function formatShotInputMode(value) {
   return shotInputModeOptions.find((item) => item.value === value)?.label || value || "未设置";
+}
+
+function normalizeShotAnchorMode(value) {
+  return supportedShotAnchorModes.has(value) ? value : "auto";
+}
+
+function formatShotAnchorMode(value) {
+  return shotAnchorModeOptions.find((item) => item.value === normalizeShotAnchorMode(value))?.label || "自动";
+}
+
+function normalizeShotAnchorOverrides(raw, characterIds = []) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const allowedIds = new Set((characterIds || []).filter(Boolean));
+  const normalized = {};
+
+  for (const characterId of allowedIds) {
+    const mode = normalizeShotAnchorMode(source[characterId]);
+    if (mode !== "auto") {
+      normalized[characterId] = mode;
+    }
+  }
+
+  return normalized;
+}
+
+function buildShotAnchorStrategyPayload(source, characterIds = []) {
+  return {
+    mode: normalizeShotAnchorMode(source.shotAnchorMode),
+    per_character: normalizeShotAnchorOverrides(source.shotAnchorOverrides, characterIds)
+  };
+}
+
+function getShotAnchorOverrideValue(source, characterId) {
+  if (!characterId) {
+    return "auto";
+  }
+  return normalizeShotAnchorMode(source.shotAnchorOverrides?.[characterId]);
+}
+
+function setShotAnchorOverrideValue(source, characterId, value) {
+  if (!characterId) {
+    return;
+  }
+  if (!source.shotAnchorOverrides || typeof source.shotAnchorOverrides !== "object") {
+    source.shotAnchorOverrides = {};
+  }
+  const normalized = normalizeShotAnchorMode(value);
+  if (normalized === "auto") {
+    delete source.shotAnchorOverrides[characterId];
+    return;
+  }
+  source.shotAnchorOverrides[characterId] = normalized;
+}
+
+function countShotAnchorOverrides(raw, characterIds = []) {
+  return Object.keys(normalizeShotAnchorOverrides(raw, characterIds)).length;
+}
+
+function formatShotAnchorOverridesDisplay(anchorStrategy, characterIds = []) {
+  const overrides = normalizeShotAnchorOverrides(anchorStrategy?.per_character, characterIds);
+  return (characterIds || [])
+    .filter((characterId) => overrides[characterId])
+    .map((characterId) => {
+      const name = state.characters.find((item) => item.id === characterId)?.name || characterId;
+      return `${name}：${formatShotAnchorMode(overrides[characterId])}`;
+    })
+    .join("；");
 }
 
 function normalizeStoryboardProductionMode(value) {
@@ -822,6 +1081,26 @@ function formatShotKeyword(value, fallback = "未设置") {
   return normalized || fallback;
 }
 
+function formatPromptGenerationMode(value) {
+  if (value === "ai_refined") {
+    return "AI 润色";
+  }
+  if (value === "fallback_template") {
+    return "模板回退";
+  }
+  return value || "未知";
+}
+
+function formatPromptVariantLabel(value) {
+  if (value === "ai_refined") {
+    return "AI 润色版";
+  }
+  if (value === "fallback_template") {
+    return "本地模板版";
+  }
+  return value || "未知版本";
+}
+
 function formatProviderName(value) {
   if (!value || value === "manual") {
     return "手动占位";
@@ -874,7 +1153,13 @@ function formatSeedanceMode(value) {
 
 function normalizeSeedanceRequestBodyForDisplay(job) {
   const provider = job?.provider || {};
-  const requestBody = provider.request_body || {};
+  const submittedRequestBody =
+    provider.submitted_request_body &&
+      typeof provider.submitted_request_body === "object" &&
+      Object.keys(provider.submitted_request_body).length
+      ? provider.submitted_request_body
+      : null;
+  const requestBody = submittedRequestBody || provider.request_body || {};
   const rawContent = Array.isArray(requestBody.content) ? requestBody.content : [];
 
   const textItem =
@@ -1758,7 +2043,7 @@ async function loadProductionData(seriesSlug) {
   }
 }
 
-async function loadShotsForStoryboard(seriesSlug, storyboardId) {
+async function loadShotsForStoryboard(seriesSlug, storyboardId, preferredShotId = "") {
   const requestId = ++shotsRequestSeed;
   if (!seriesSlug || !storyboardId) {
     state.shots = [];
@@ -1766,9 +2051,9 @@ async function loadShotsForStoryboard(seriesSlug, storyboardId) {
     return;
   }
 
+  const desiredShotId = preferredShotId || state.selectedShotId;
   loading.shots = true;
   state.shots = [];
-  state.selectedShotId = "";
   try {
     const data = await listShots(seriesSlug, storyboardId);
     if (
@@ -1779,9 +2064,9 @@ async function loadShotsForStoryboard(seriesSlug, storyboardId) {
       return;
     }
     state.shots = data.items || [];
-    if (!state.shots.some((item) => item.id === state.selectedShotId)) {
-      state.selectedShotId = state.shots[0]?.id || "";
-    }
+    state.selectedShotId = state.shots.some((item) => item.id === desiredShotId)
+      ? desiredShotId
+      : state.shots[0]?.id || "";
   } catch (error) {
     if (
       requestId !== shotsRequestSeed ||
@@ -2621,6 +2906,7 @@ async function handleCreateShot() {
       scene_id: forms.shotSceneId,
       shot_payload: {
         characters: state.selectedCharacterIds,
+        anchor_strategy: buildShotAnchorStrategyPayload(forms, state.selectedCharacterIds),
         story: buildShotStoryPayload(forms),
         dialogue: buildShotDialoguePayload(forms),
         media: buildShotMediaPayload(forms),
@@ -2671,6 +2957,7 @@ async function handleUpdateShot(item = selectedShot.value) {
     await updateShot(state.selectedSeriesSlug, state.selectedStoryboardId, targetShotId, {
       scene_id: inlineEditing.shotSceneId,
       characters: [...inlineEditing.shotCharacterIds],
+      anchor_strategy: buildShotAnchorStrategyPayload(inlineEditing, inlineEditing.shotCharacterIds),
       story: buildShotStoryPayload(inlineEditing),
       dialogue: buildShotDialoguePayload(inlineEditing),
       media: buildShotMediaPayload(inlineEditing),
@@ -2736,16 +3023,19 @@ async function handleCreateRenderTask() {
     setError("场景直出模式不走单镜头任务草稿，请改用场景级直出流程");
     return;
   }
+  if (!selectedShotPromptPackage.value?.positive) {
+    setError("请先生成镜头包");
+    return;
+  }
 
   loading.createRender = true;
   try {
-    await assembleShotPackage(state.selectedSeriesSlug, state.selectedStoryboardId, state.selectedShotId);
-    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
+    const shotId = state.selectedShotId;
 
     const snapshotResponse = await createSnapshot({
       series_slug: state.selectedSeriesSlug,
       storyboard_id: state.selectedStoryboardId,
-      shot_id: state.selectedShotId,
+      shot_id: shotId,
       provider_payload: {
         source: "frontend-workbench",
         note: "seedance-2.0-ready"
@@ -2772,6 +3062,55 @@ async function handleCreateRenderTask() {
     setError(error);
   } finally {
     loading.createRender = false;
+  }
+}
+
+async function handleSelectShotPromptVariant(variant) {
+  if (!state.selectedSeriesSlug || !state.selectedStoryboardId || !state.selectedShotId) {
+    setError("请先选择一个镜头");
+    return;
+  }
+
+  const normalizedVariant = variant === "ai_refined" ? "ai_refined" : "fallback_template";
+  const promptPackage = selectedShotPromptPackage.value;
+  if (!promptPackage) {
+    setError("当前镜头还没有镜头包");
+    return;
+  }
+
+  const promptVariants = {
+    ai_refined: String(selectedShotPromptVariants.value.ai_refined || "").trim(),
+    fallback_template: String(selectedShotPromptVariants.value.fallback_template || "").trim()
+  };
+  const nextPrompt = promptVariants[normalizedVariant];
+  if (!nextPrompt) {
+    setError(`${formatPromptVariantLabel(normalizedVariant)}当前不可用`);
+    return;
+  }
+  if (selectedShotPromptVariant.value === normalizedVariant && promptPackage.positive === nextPrompt) {
+    return;
+  }
+
+  loading.updateShot = true;
+  try {
+    await updateShot(state.selectedSeriesSlug, state.selectedStoryboardId, state.selectedShotId, {
+      prompt_package: {
+        ...promptPackage,
+        positive: nextPrompt,
+        prompt_variants: promptVariants,
+        selected_prompt_variant: normalizedVariant,
+        video_payload: {
+          ...(promptPackage.video_payload || {}),
+          prompt: nextPrompt
+        }
+      }
+    });
+    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, state.selectedShotId);
+    setNotice(`已切换为${formatPromptVariantLabel(normalizedVariant)}`);
+  } catch (error) {
+    setError(error);
+  } finally {
+    loading.updateShot = false;
   }
 }
 
@@ -2914,9 +3253,10 @@ async function handleAssembleShotPackage() {
 
   loading.shotPackage = true;
   try {
-    await assembleShotPackage(state.selectedSeriesSlug, state.selectedStoryboardId, state.selectedShotId);
-    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId);
-    setNotice(`镜头包已组装：${state.selectedShotId}`);
+    const shotId = state.selectedShotId;
+    await assembleShotPackage(state.selectedSeriesSlug, state.selectedStoryboardId, shotId);
+    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, shotId);
+    setNotice(`镜头包已组装：${shotId}`);
   } catch (error) {
     setError(error);
   } finally {
@@ -3107,6 +3447,23 @@ watch(
   }
 );
 
+watch(
+  () => [...state.selectedCharacterIds],
+  (characterIds) => {
+    forms.shotAnchorOverrides = normalizeShotAnchorOverrides(forms.shotAnchorOverrides, characterIds);
+  }
+);
+
+watch(
+  () => [...inlineEditing.shotCharacterIds],
+  (characterIds) => {
+    inlineEditing.shotAnchorOverrides = normalizeShotAnchorOverrides(
+      inlineEditing.shotAnchorOverrides,
+      characterIds
+    );
+  }
+);
+
 onMounted(boot);
 </script>
 
@@ -3136,7 +3493,9 @@ onMounted(boot);
 
     <section class="workspace">
       <aside class="column column-left">
-        <section class="panel ">
+        <section v-loading="seriesListPanelLoading" element-loading-text="系列列表加载中..."
+          :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+          element-loading-background="rgba(7, 10, 14, 0.2)" class="panel ">
           <div class="panel-header">
             <div>
               <p class="panel-kicker">工作区</p>
@@ -3185,7 +3544,9 @@ onMounted(boot);
             </div>
           </div>
         </section>
-        <section class="panel">
+        <section v-loading="seriesCreatePanelLoading" element-loading-text="系列创建中..."
+          :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+          element-loading-background="rgba(7, 10, 14, 0.16)" class="panel">
           <div class="panel-header">
             <div>
               <p class="panel-kicker">系列</p>
@@ -3271,7 +3632,9 @@ onMounted(boot);
           </div>
         </section>
 
-        <section class="panel">
+        <section v-loading="episodesPanelLoading" element-loading-text="剧集面板加载中..."
+          :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+          element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
           <div class="panel-header">
             <div>
               <p class="panel-kicker">剧集</p>
@@ -3321,7 +3684,9 @@ onMounted(boot);
         </section>
 
         <section class="editor-grid">
-          <article class="panel editor-panel">
+          <article v-loading="rawScriptPanelLoading" element-loading-text="剧本处理中..."
+            :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+            element-loading-background="rgba(7, 10, 14, 0.18)" class="panel editor-panel">
             <div class="panel-header">
               <div>
                 <p class="panel-kicker">原始剧本</p>
@@ -3340,7 +3705,9 @@ onMounted(boot);
               :autosize="{ minRows: 22, maxRows: 30 }" resize="auto" placeholder="在这里粘贴或编写原始剧本内容。" />
           </article>
 
-          <article class="panel editor-panel">
+          <article v-loading="parsedScriptPanelLoading" element-loading-text="解析结果处理中..."
+            :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+            element-loading-background="rgba(7, 10, 14, 0.18)" class="panel editor-panel">
             <div class="panel-header">
               <div>
                 <p class="panel-kicker">结构化结果</p>
@@ -3520,7 +3887,9 @@ onMounted(boot);
         </section>
 
         <section class="studio-grid">
-          <article class="panel">
+          <article v-loading="characterCreatePanelLoading" element-loading-text="角色列表处理中..."
+            :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+            element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
             <div class="panel-header">
               <div>
                 <p class="panel-kicker">角色</p>
@@ -3580,7 +3949,9 @@ onMounted(boot);
             </div>
           </article>
 
-          <article class="panel">
+          <article v-loading="sceneCreatePanelLoading" element-loading-text="场景列表处理中..."
+            :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+            element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
             <div class="panel-header">
               <div>
                 <p class="panel-kicker">场景</p>
@@ -3640,7 +4011,9 @@ onMounted(boot);
         </section>
 
         <section class="lab-grid">
-          <article class="panel">
+          <article v-loading="characterLabPanelLoading" element-loading-text="角色素材处理中..."
+            :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+            element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
             <div class="panel-header">
               <div>
                 <p class="panel-kicker">角色工坊</p>
@@ -3745,7 +4118,9 @@ onMounted(boot);
             <div v-else class="empty-state">选择一个角色后，可上传角色参考图并生成单张角色圣经拼图。</div>
           </article>
 
-          <article class="panel">
+          <article v-loading="sceneLabPanelLoading" element-loading-text="场景素材处理中..."
+            :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+            element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
             <div class="panel-header">
               <div>
                 <p class="panel-kicker">场景工坊</p>
@@ -3799,7 +4174,9 @@ onMounted(boot);
       </section>
 
       <aside class="column column-right">
-        <section class="panel">
+        <section v-loading="storyboardConfigPanelLoading" element-loading-text="分镜配置处理中..."
+          :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+          element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
           <div class="panel-header">
             <div>
               <p class="panel-kicker">分镜</p>
@@ -3828,7 +4205,9 @@ onMounted(boot);
             </div>
           </div>
 
-          <div v-if="selectedStoryboard" class="subsection">
+          <div v-if="selectedStoryboard" v-loading="storyboardDetailLoading" element-loading-text="分镜板详情加载中..."
+            :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+            element-loading-background="rgba(7, 10, 14, 0.16)" class="subsection storyboard-detail-section">
             <div class="panel-header sub-panel-header">
               <div>
                 <p class="panel-kicker">生产模式</p>
@@ -3875,15 +4254,19 @@ onMounted(boot);
                 </div>
 
                 <div class="split-grid">
-                  <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="15" :step="1" />
+                  <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="15" :step="1">
+                    <template #suffix>
+                      <span>秒</span>
+                    </template>
+                  </el-input-number>
                   <el-select v-model="forms.shotGenerationCount" class="field-select" placeholder="生成数量">
                     <el-option v-for="item in shotGenerationCountOptions" :key="item.value" :label="item.label"
                       :value="item.value" />
                   </el-select>
                 </div>
-
-                <el-checkbox v-model="forms.shotGenerateAudio">需要声音</el-checkbox>
-
+                <div class="split-grid">
+                  <el-checkbox v-model="forms.shotGenerateAudio">需要声音</el-checkbox>
+                </div>
                 <div v-if="isReferenceMode(forms.shotInputMode)" class="shot-media-panel">
                   <div class="shot-media-header">
                     <div>
@@ -3992,6 +4375,31 @@ onMounted(boot);
                     :autosize="{ minRows: 2, maxRows: 6 }" placeholder="剧本原文摘录，可直接粘贴当前镜头对应的原始剧本片段" />
                 </div>
 
+                <div class="story-binding-panel">
+                  <div class="story-binding-header">
+                    <strong>角色锚点策略</strong>
+                    <small>默认自动按景别抽取角色锚点；如有必要，可对当前镜头里的单个角色单独覆盖。</small>
+                  </div>
+                  <el-select v-model="forms.shotAnchorMode" class="field-select" placeholder="选择默认锚点策略">
+                    <el-option v-for="option in shotAnchorModeOptions" :key="option.value" :label="option.label"
+                      :value="option.value" />
+                  </el-select>
+                  <div v-if="state.selectedCharacterIds.length" class="form-stack compact-stack">
+                    <div v-for="characterId in state.selectedCharacterIds" :key="`create-anchor-${characterId}`"
+                      class="split-grid">
+                      <div class="inline-label">
+                        {{state.characters.find((item) => item.id === characterId)?.name || characterId}}
+                      </div>
+                      <el-select :model-value="getShotAnchorOverrideValue(forms, characterId)" class="field-select"
+                        placeholder="跟随默认策略"
+                        @update:model-value="setShotAnchorOverrideValue(forms, characterId, $event)">
+                        <el-option v-for="option in shotAnchorModeOptions" :key="option.value" :label="option.label"
+                          :value="option.value" />
+                      </el-select>
+                    </div>
+                  </div>
+                </div>
+
                 <el-checkbox-group v-model="state.selectedCharacterIds" class="check-grid">
                   <el-checkbox v-for="item in state.characters" :key="item.id" :value="item.id" class="check-card">
                     {{ item.name }}
@@ -4006,6 +4414,7 @@ onMounted(boot);
             </div>
 
             <div class="mini-list">
+              <h3>导入的静头卡最好编辑一下，因为时间之类的都是默认的</h3>
               <div v-for="item in state.shots" :key="item.id" class="mini-card selectable"
                 :class="{ active: item.id === state.selectedShotId }">
                 <div class="item-body" @click="state.selectedShotId = item.id">
@@ -4032,7 +4441,11 @@ onMounted(boot);
                       </div>
                       <div class="split-grid">
                         <el-input-number v-model="inlineEditing.shotDuration" class="field-number" :min="1" :max="15"
-                          :step="1" />
+                          :step="1">
+                          <template #suffix>
+                            <span>秒</span>
+                          </template>
+                        </el-input-number>
                         <el-select v-model="inlineEditing.shotGenerationCount" class="field-select" placeholder="生成数量">
                           <el-option v-for="option in shotGenerationCountOptions" :key="option.value"
                             :label="option.label" :value="option.value" />
@@ -4150,6 +4563,30 @@ onMounted(boot);
                           type="textarea" :autosize="{ minRows: 2, maxRows: 6 }"
                           placeholder="剧本原文摘录，可直接粘贴当前镜头对应的原始剧本片段" />
                       </div>
+                      <div class="story-binding-panel">
+                        <div class="story-binding-header">
+                          <strong>角色锚点策略</strong>
+                          <small>先用全局策略控制当前镜头，再按角色做局部覆盖。</small>
+                        </div>
+                        <el-select v-model="inlineEditing.shotAnchorMode" class="field-select" placeholder="选择默认锚点策略">
+                          <el-option v-for="option in shotAnchorModeOptions" :key="option.value" :label="option.label"
+                            :value="option.value" />
+                        </el-select>
+                        <div v-if="inlineEditing.shotCharacterIds.length" class="form-stack compact-stack">
+                          <div v-for="characterId in inlineEditing.shotCharacterIds" :key="`edit-anchor-${characterId}`"
+                            class="split-grid">
+                            <div class="inline-label">
+                              {{state.characters.find((item) => item.id === characterId)?.name || characterId}}
+                            </div>
+                            <el-select :model-value="getShotAnchorOverrideValue(inlineEditing, characterId)"
+                              class="field-select" placeholder="跟随默认策略"
+                              @update:model-value="setShotAnchorOverrideValue(inlineEditing, characterId, $event)">
+                              <el-option v-for="option in shotAnchorModeOptions" :key="option.value"
+                                :label="option.label" :value="option.value" />
+                            </el-select>
+                          </div>
+                        </div>
+                      </div>
                       <el-checkbox-group v-model="inlineEditing.shotCharacterIds" class="check-grid">
                         <el-checkbox v-for="character in state.characters" :key="character.id" :value="character.id"
                           class="check-card">
@@ -4165,6 +4602,10 @@ onMounted(boot);
                     <small>情绪 / 节拍：{{ getShotStoryDisplay(item, "emotion") }} ·
                       {{ getShotStoryDisplay(item, "beat") }}</small>
                     <span>{{ formatShotInputMode(item.media?.mode) }}</span>
+                    <small>锚点：{{ formatShotAnchorMode(item.anchor_strategy?.mode) }}<template
+                        v-if="countShotAnchorOverrides(item.anchor_strategy?.per_character, item.characters)"> · {{
+                          countShotAnchorOverrides(item.anchor_strategy?.per_character, item.characters) }}
+                        个角色覆盖</template></small>
                     <span>{{ formatShotAspectRatio(item.visual.aspect_ratio) }} ·
                       {{ formatShotResolution(item.visual.resolution) }}</span>
                     <span>{{ formatShotSize(item.visual.shot_size) }} ·
@@ -4226,7 +4667,11 @@ onMounted(boot);
               </div>
 
               <div class="split-grid">
-                <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="15" :step="1" />
+                <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="15" :step="1">
+                  <template #suffix>
+                    <span>秒</span>
+                  </template>
+                </el-input-number>
                 <el-select v-model="forms.shotGenerationCount" class="field-select" placeholder="生成数量">
                   <el-option v-for="item in shotGenerationCountOptions" :key="item.value" :label="item.label"
                     :value="item.value" />
@@ -4335,7 +4780,9 @@ onMounted(boot);
           </div>
         </section>
 
-        <section class="panel">
+        <section v-loading="executionPanelLoading" element-loading-text="执行区处理中..."
+          :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+          element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
           <div class="panel-header">
             <div>
               <p class="panel-kicker">执行区</p>
@@ -4349,342 +4796,401 @@ onMounted(boot);
               : "当前处于场景直出模式。这里会承接后续的场景级组包、快照与任务提交，不再以单镜头为单位推进。" }}
           </p>
 
-          <template v-if="selectedStoryboardProductionMode === 'shot_pipeline'">
-            <el-button class="action-button dark full-width" :disabled="loading.shotPackage"
-              @click="handleAssembleShotPackage">
-              {{ loading.shotPackage ? "组装中..." : "组装镜头包" }}
-            </el-button>
-
-            <el-button class="action-button warm full-width primary-action" :disabled="loading.createRender"
-              @click="handleCreateRenderTask">
-              {{ loading.createRender ? "生成中..." : "生成任务草稿" }}
-            </el-button>
-
-            <div v-if="selectedShot" class="focus-card">
-              <span>当前镜头</span>
-              <strong>{{ selectedShot.id }}</strong>
-              <small>{{ formatShotInputMode(selectedShot.media?.mode) }} · {{ selectedShot.scene_id }} ·
-                {{ selectedShot.visual.duration_seconds }} 秒</small>
+          <div class="execution-flow">
+            <div class="flow-card"
+              :class="{ active: selectedStoryboardProductionMode === 'shot_pipeline' ? !!selectedShotPromptPackage?.positive : !!selectedSceneDirectPackage?.positive }">
+              <span class="flow-step">01</span>
+              <strong>{{ selectedStoryboardProductionMode === "shot_pipeline" ? "镜头包" : "场景包" }}</strong>
+              <small>
+                {{ selectedStoryboardProductionMode === "shot_pipeline"
+                  ? "先把镜头卡、剧情、参考素材和参数组装成可生成包。"
+                  : "先把场景摘要、节拍、参考素材和参数组装成场景级生成包。" }}
+              </small>
+              <em>{{ (selectedStoryboardProductionMode === "shot_pipeline" ? selectedShotPromptPackage?.positive : selectedSceneDirectPackage?.positive) ? "已生成" : "待生成" }}</em>
             </div>
 
-            <div v-if="selectedShot" class="meta-panel">
-              <div class="meta-row meta-row-wide">
-                <span>镜头卡剧情描述</span>
-                <strong>{{ getShotStoryDisplay(selectedShot, "description") }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>镜头卡情绪</span>
-                <strong>{{ getShotStoryDisplay(selectedShot, "emotion") }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>镜头卡节拍</span>
-                <strong>{{ getShotStoryDisplay(selectedShot, "beat") }}</strong>
-              </div>
-              <div class="meta-row meta-row-wide">
-                <span>镜头卡对白</span>
-                <strong class="prompt-preview">{{ formatDialogueEntries(selectedShot.dialogue) || "暂无" }}</strong>
-              </div>
-              <div class="meta-row meta-row-wide">
-                <span>镜头卡原文摘录</span>
-                <strong class="prompt-preview">{{ getShotStoryDisplay(selectedShot, "raw_script_excerpt") }}</strong>
-              </div>
+            <div class="flow-card" :class="{ active: !!state.selectedSnapshotId || !!state.snapshots.length }">
+              <span class="flow-step">02</span>
+              <strong>快照</strong>
+              <small>把当前组装结果和已解析素材固化成一次可追踪的本地快照。</small>
+              <em>{{ state.snapshots.length ? `${state.snapshots.length} 个快照` : "待生成" }}</em>
             </div>
 
-            <div v-if="selectedShotPromptPackage?.positive" class="meta-panel">
-              <div class="meta-row">
-                <span>参考素材数量</span>
-                <strong>{{ selectedShotPromptPackage.media_references?.length || selectedShotPromptPackage.reference_images?.length || 0 }}</strong>
+            <div class="flow-card" :class="{ active: !!state.selectedJobId || !!state.jobs.length }">
+              <span class="flow-step">03</span>
+              <strong>提交草稿</strong>
+              <small>基于快照生成最终要发给 Seedance 的 request_body 和任务记录。</small>
+              <em>{{ state.jobs.length ? `${state.jobs.length} 个草稿` : "待生成" }}</em>
+            </div>
+          </div>
+
+          <div class="execution-stage">
+            <div class="panel-header sub-panel-header execution-stage-header">
+              <div>
+                <p class="panel-kicker">Step 1</p>
+                <h3>{{ selectedStoryboardProductionMode === "shot_pipeline" ? "镜头包" : "场景包" }}</h3>
               </div>
-              <div class="meta-row">
-                <span>参考图片</span>
-                <strong>{{ selectedShotPromptPackage.reference_images?.length || 0 }}</strong>
-              </div>
-              <div class="meta-row meta-row-wide">
-                <span>Seedance 提示词预览</span>
-                <strong class="prompt-preview">{{ selectedShotPromptPackage.positive }}</strong>
-              </div>
+              <span class="pill">
+                {{ (selectedStoryboardProductionMode === "shot_pipeline" ? selectedShotPromptPackage?.positive : selectedSceneDirectPackage?.positive) ? "已生成" : "待生成" }}
+              </span>
             </div>
 
-            <div v-if="selectedShotPromptPackage?.script_context" class="meta-panel">
-              <div class="meta-row">
-                <span>剧集标题</span>
-                <strong>{{ selectedShotPromptPackage.script_context.episode_title || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>场景位置</span>
-                <strong>{{ selectedShotPromptPackage.script_context.scene_location || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>场景时间</span>
-                <strong>{{ selectedShotPromptPackage.script_context.scene_time || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>镜头动作</span>
-                <strong>{{ selectedShotPromptPackage.script_context.shot_description || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>情绪基调</span>
-                <strong>{{ selectedShotPromptPackage.script_context.shot_emotion || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>剧情节点</span>
-                <strong>{{ selectedShotPromptPackage.script_context.shot_beat || "暂无" }}</strong>
-              </div>
-              <div class="meta-row meta-row-wide">
-                <span>当前镜头台词片段</span>
-                <strong
-                  class="prompt-preview">{{ selectedShotPromptPackage.script_context.dialogue_excerpt || "暂无" }}</strong>
-              </div>
-              <div class="meta-row meta-row-wide">
-                <span>剧本原文摘录</span>
-                <strong
-                  class="prompt-preview">{{ selectedShotPromptPackage.script_context.raw_script_excerpt || "暂无" }}</strong>
-              </div>
-            </div>
-          </template>
+            <template v-if="selectedStoryboardProductionMode === 'shot_pipeline'">
+              <el-button class="action-button dark full-width" :disabled="loading.shotPackage"
+                @click="handleAssembleShotPackage">
+                {{ loading.shotPackage ? "生成中..." : "生成镜头包" }}
+              </el-button>
 
-          <template v-else>
-            <el-button class="action-button dark full-width" :disabled="loading.sceneDirectPackage"
-              @click="handleAssembleSceneDirectPackage">
-              {{ loading.sceneDirectPackage ? "组装中..." : "组装场景包" }}
-            </el-button>
 
-            <el-button class="action-button warm full-width primary-action" :disabled="loading.createSceneDirectTask"
-              @click="handleCreateSceneDirectTask">
-              {{ loading.createSceneDirectTask ? "生成中..." : "生成场景任务草稿" }}
-            </el-button>
 
-            <div class="focus-card">
-              <span>当前场景</span>
-              <strong>{{state.scenes.find((item) => item.id === getSceneDirectSceneId())?.name || "请先选择场景"}}</strong>
-              <small>{{ getSceneDirectSceneId() || "未指定场景" }} · {{ formatShotInputMode(forms.shotInputMode) }} ·
-                {{ normalizeShotDuration(forms.shotDuration) }} 秒</small>
-            </div>
+              <div v-if="selectedShot" class="focus-card">
+                <span>当前镜头</span>
+                <strong>{{ selectedShot.id }}</strong>
+                <small>{{ formatShotInputMode(selectedShot.media?.mode) }} · {{ selectedShot.scene_id }} ·
+                  {{ selectedShot.visual.duration_seconds }} 秒</small>
+              </div>
 
-            <div v-if="selectedSceneDirectPackage?.positive" class="meta-panel">
-              <div class="meta-row">
-                <span>参考素材数量</span>
-                <strong>{{ selectedSceneDirectPackage.media_references?.length || selectedSceneDirectPackage.reference_images?.length || 0 }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>参考图片</span>
-                <strong>{{ selectedSceneDirectPackage.reference_images?.length || 0 }}</strong>
-              </div>
-              <div class="meta-row meta-row-wide">
-                <span>场景级提示词预览</span>
-                <strong class="prompt-preview">{{ selectedSceneDirectPackage.positive }}</strong>
-              </div>
-            </div>
-
-            <div v-if="selectedSceneDirectPackage?.script_context" class="meta-panel">
-              <div class="meta-row">
-                <span>剧集标题</span>
-                <strong>{{ selectedSceneDirectPackage.script_context.episode_title || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>场景位置</span>
-                <strong>{{ selectedSceneDirectPackage.script_context.scene_location || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>场景时间</span>
-                <strong>{{ selectedSceneDirectPackage.script_context.scene_time || "暂无" }}</strong>
-              </div>
-              <div class="meta-row meta-row-wide">
-                <span>场景摘要</span>
-                <strong>{{ selectedSceneDirectPackage.script_context.scene_summary || "暂无" }}</strong>
-              </div>
-              <div class="meta-row meta-row-wide">
-                <span>节拍大纲</span>
-                <strong
-                  class="prompt-preview">{{ (selectedSceneDirectPackage.script_context.beat_outline || []).join("\n") || "暂无" }}</strong>
-              </div>
-              <div class="meta-row meta-row-wide">
-                <span>剧本原文摘录</span>
-                <strong
-                  class="prompt-preview">{{ selectedSceneDirectPackage.script_context.raw_script_excerpt || "暂无" }}</strong>
-              </div>
-            </div>
-
-            <div v-if="(selectedSceneDirectPackage?.script_context?.shot_outlines || []).length"
-              class="mini-list direct-beat-list">
-              <div v-for="item in selectedSceneDirectPackage.script_context.shot_outlines"
-                :key="`scene-beat-${item.index}`" class="mini-card">
-                <div class="item-body">
-                  <strong>节拍 {{ item.index }}</strong>
-                  <small>{{ formatReadableField(item.description) }}</small>
-                  <small>镜头建议：{{ formatReadableField(item.camera_summary) }}</small>
-                  <small>情绪：{{ formatReadableField(item.emotion) }}</small>
-                  <small>剧情节拍：{{ formatReadableField(item.beat) }}</small>
-                  <small>对白：{{ formatReadableField(item.dialogue_excerpt) }}</small>
+              <div v-if="selectedShot" class="meta-panel">
+                <div class="meta-row meta-row-wide">
+                  <span>镜头卡剧情描述</span>
+                  <strong>{{ getShotStoryDisplay(selectedShot, "description") }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>镜头卡情绪</span>
+                  <strong>{{ getShotStoryDisplay(selectedShot, "emotion") }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>镜头卡节拍</span>
+                  <strong>{{ getShotStoryDisplay(selectedShot, "beat") }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>锚点策略</span>
+                  <strong>{{ formatShotAnchorMode(selectedShot.anchor_strategy?.mode) }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>镜头卡对白</span>
+                  <strong class="prompt-preview">{{ formatDialogueEntries(selectedShot.dialogue) || "暂无" }}</strong>
+                </div>
+                <div
+                  v-if="countShotAnchorOverrides(selectedShot.anchor_strategy?.per_character, selectedShot.characters)"
+                  class="meta-row meta-row-wide">
+                  <span>角色覆盖</span>
+                  <strong class="prompt-preview">{{ formatShotAnchorOverridesDisplay(selectedShot.anchor_strategy,
+                    selectedShot.characters) || "暂无" }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>镜头卡原文摘录</span>
+                  <strong class="prompt-preview">{{ getShotStoryDisplay(selectedShot, "raw_script_excerpt") }}</strong>
                 </div>
               </div>
-            </div>
-          </template>
 
-          <div class="mini-list">
-            <div v-for="item in state.jobs" :key="item.id" class="mini-card selectable"
-              :class="{ active: item.id === state.selectedJobId }">
-              <div class="item-body" @click="state.selectedJobId = item.id">
-                <strong>{{ item.id }}</strong>
-                <span>{{ formatStatus(item.status) }}</span>
-                <small>{{ formatSeedanceMode(getJobSeedanceSummary(item).mode) }} ·
-                  {{ item.provider?.model || "doubao-seedance-2-0-260128" }}</small>
-                <small>输出：{{ getJobSeedanceSummary(item).ratio }} · {{ getJobSeedanceSummary(item).resolution }} ·
-                  {{ formatJobOutputSummary(item) }}</small>
-                <small>素材：{{ formatJobReferenceSummary(item) }} ·
-                  {{ getJobSeedanceSummary(item).returnLastFrame ? "回传尾帧" : "不回传尾帧" }}</small>
-                <small>关联快照：{{ item.snapshot_id || "暂无" }}</small>
+              <div v-if="selectedShotPromptPackage?.positive" class="meta-panel">
+                <div class="meta-row">
+                  <span>参考素材数量</span>
+                  <strong>{{ selectedShotPromptPackage.media_references?.length || selectedShotPromptPackage.reference_images?.length || 0 }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>参考图片</span>
+                  <strong>{{ selectedShotPromptPackage.reference_images?.length || 0 }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>当前版本</span>
+                  <strong>{{ formatPromptVariantLabel(selectedShotPromptVariant) }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>提示词版本切换</span>
+                  <div class="inline-actions compact-actions prompt-variant-actions">
+                    <el-button class="action-button compact-button"
+                      :class="selectedShotPromptVariant === 'ai_refined' ? 'warm selected-variant' : 'ghost'"
+                      :disabled="loading.updateShot || !selectedShotPromptVariants.ai_refined"
+                      @click="handleSelectShotPromptVariant('ai_refined')">
+                      {{ loading.updateShot && selectedShotPromptVariant !== 'ai_refined' ? "切换中..." : "使用 AI 润色版" }}
+                    </el-button>
+                    <el-button class="action-button compact-button"
+                      :class="selectedShotPromptVariant === 'fallback_template' ? 'warm selected-variant' : 'ghost'"
+                      :disabled="loading.updateShot || !selectedShotPromptVariants.fallback_template"
+                      @click="handleSelectShotPromptVariant('fallback_template')">
+                      {{ loading.updateShot && selectedShotPromptVariant !== 'fallback_template' ? "切换中..." : "使用 本地模板版" }}
+                    </el-button>
+                  </div>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>Seedance 提示词预览</span>
+                  <strong class="prompt-preview">{{ selectedShotPromptPreview }}</strong>
+                </div>
               </div>
-              <div class="item-actions">
-                <el-button class="action-button ghost compact-button" @click.stop="handleOpenJobSnapshot(item)">
-                  查看快照
-                </el-button>
-                <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteJob"
-                  @click.stop="handleDeleteJob(item)">
-                  {{ loading.deleteJob ? "删除中..." : "删除" }}
-                </el-button>
+
+              <div v-if="selectedShotPromptPackage?.prompt_generation" class="meta-panel">
+                <div class="meta-row">
+                  <span>生成方式</span>
+                  <strong>{{ formatPromptGenerationMode(selectedShotPromptPackage.prompt_generation.mode) }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>模型</span>
+                  <strong>{{ selectedShotPromptPackage.prompt_generation.model || "暂无" }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>Fallback</span>
+                  <strong>{{ selectedShotPromptPackage.prompt_generation.fallback_used ? "是" : "否" }}</strong>
+                </div>
+                <div v-if="selectedShotPromptPackage.prompt_generation.error" class="meta-row meta-row-wide">
+                  <span>回退原因</span>
+                  <strong class="prompt-preview">{{ selectedShotPromptPackage.prompt_generation.error }}</strong>
+                </div>
               </div>
-            </div>
-            <div v-if="!state.jobs.length" class="empty-state">当前还没有任务草稿。</div>
+
+              <div v-if="selectedShotPromptPackage?.script_context" class="meta-panel">
+                <div class="meta-row">
+                  <span>剧集标题</span>
+                  <strong>{{ selectedShotPromptPackage.script_context.episode_title || "暂无" }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>场景位置</span>
+                  <strong>{{ selectedShotPromptPackage.script_context.scene_location || "暂无" }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>场景时间</span>
+                  <strong>{{ selectedShotPromptPackage.script_context.scene_time || "暂无" }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>镜头动作</span>
+                  <strong>{{ selectedShotPromptPackage.script_context.shot_description || "暂无" }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>情绪基调</span>
+                  <strong>{{ selectedShotPromptPackage.script_context.shot_emotion || "暂无" }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>剧情节点</span>
+                  <strong>{{ selectedShotPromptPackage.script_context.shot_beat || "暂无" }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>当前镜头台词片段</span>
+                  <strong
+                    class="prompt-preview">{{ selectedShotPromptPackage.script_context.dialogue_excerpt || "暂无" }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>剧本原文摘录</span>
+                  <strong
+                    class="prompt-preview">{{ selectedShotPromptPackage.script_context.raw_script_excerpt || "暂无" }}</strong>
+                </div>
+              </div>
+              <el-button class="action-button warm full-width primary-action" :disabled="loading.createRender"
+                @click="handleCreateRenderTask">
+                {{ loading.createRender ? "生成中..." : "生成提交草稿" }}
+              </el-button>
+            </template>
+
+            <template v-else>
+              <el-button class="action-button dark full-width" :disabled="loading.sceneDirectPackage"
+                @click="handleAssembleSceneDirectPackage">
+                {{ loading.sceneDirectPackage ? "组装中..." : "组装场景包" }}
+              </el-button>
+
+
+              <div class="focus-card" style="margin-bottom: 12px;">
+                <span>当前场景</span>
+                <strong>{{state.scenes.find((item) => item.id === getSceneDirectSceneId())?.name || "请先选择场景"}}</strong>
+                <small>{{ getSceneDirectSceneId() || "未指定场景" }} · {{ formatShotInputMode(forms.shotInputMode) }} ·
+                  {{ normalizeShotDuration(forms.shotDuration) }} 秒</small>
+              </div>
+
+              <div v-if="selectedSceneDirectPackage?.positive" class="meta-panel" style="margin-bottom: 12px;">
+                <div class="meta-row">
+                  <span>参考素材数量</span>
+                  <strong>{{ selectedSceneDirectPackage.media_references?.length || selectedSceneDirectPackage.reference_images?.length || 0 }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>参考图片</span>
+                  <strong>{{ selectedSceneDirectPackage.reference_images?.length || 0 }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>场景级提示词预览</span>
+                  <strong class="prompt-preview">{{ selectedSceneDirectPackage.positive }}</strong>
+                </div>
+              </div>
+
+              <div v-if="selectedSceneDirectPackage?.script_context" class="meta-panel" style="margin-bottom: 12px;">
+                <div class="meta-row">
+                  <span>剧集标题</span>
+                  <strong>{{ selectedSceneDirectPackage.script_context.episode_title || "暂无" }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>场景位置</span>
+                  <strong>{{ selectedSceneDirectPackage.script_context.scene_location || "暂无" }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>场景时间</span>
+                  <strong>{{ selectedSceneDirectPackage.script_context.scene_time || "暂无" }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>场景摘要</span>
+                  <strong>{{ selectedSceneDirectPackage.script_context.scene_summary || "暂无" }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>节拍大纲</span>
+                  <strong
+                    class="prompt-preview">{{ (selectedSceneDirectPackage.script_context.beat_outline || []).join("\n") || "暂无" }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>剧本原文摘录</span>
+                  <strong
+                    class="prompt-preview">{{ selectedSceneDirectPackage.script_context.raw_script_excerpt || "暂无" }}</strong>
+                </div>
+              </div>
+
+              <div v-if="selectedSceneDirectPackage?.prompt_generation" class="meta-panel" style="margin-bottom: 12px;">
+                <div class="meta-row">
+                  <span>生成方式</span>
+                  <strong>{{ formatPromptGenerationMode(selectedSceneDirectPackage.prompt_generation.mode) }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>模型</span>
+                  <strong>{{ selectedSceneDirectPackage.prompt_generation.model || "暂无" }}</strong>
+                </div>
+                <div class="meta-row">
+                  <span>Fallback</span>
+                  <strong>{{ selectedSceneDirectPackage.prompt_generation.fallback_used ? "是" : "否" }}</strong>
+                </div>
+                <div v-if="selectedSceneDirectPackage.prompt_generation.error" class="meta-row meta-row-wide">
+                  <span>回退原因</span>
+                  <strong class="prompt-preview">{{ selectedSceneDirectPackage.prompt_generation.error }}</strong>
+                </div>
+              </div>
+
+              <div v-if="selectedSceneDirectPackage?.prompt_input" class="meta-panel" style="margin-bottom: 12px;">
+                <div class="meta-row meta-row-wide">
+                  <span>Prompt 骨架：参考绑定</span>
+                  <strong class="prompt-preview">{{
+                    selectedSceneDirectPackage.prompt_input.reference_binding || "暂无"
+                  }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>Prompt 骨架：场景目标</span>
+                  <strong
+                    class="prompt-preview">{{ selectedSceneDirectPackage.prompt_input.scene_goal || "暂无" }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>Prompt 骨架：剧情阶段</span>
+                  <strong class="prompt-preview">{{
+                    (selectedSceneDirectPackage.prompt_input.condensed_beats || []).join("\n") || "暂无"
+                  }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>Prompt 骨架：场景视觉</span>
+                  <strong class="prompt-preview">{{
+                    selectedSceneDirectPackage.prompt_input.scene_visual || "暂无"
+                  }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>Prompt 骨架：镜头原则</span>
+                  <strong class="prompt-preview">{{
+                    selectedSceneDirectPackage.prompt_input.camera_direction || "暂无"
+                  }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>Prompt 骨架：输出规格</span>
+                  <strong class="prompt-preview">{{
+                    selectedSceneDirectPackage.prompt_input.output_spec || "暂无"
+                  }}</strong>
+                </div>
+                <div class="meta-row meta-row-wide">
+                  <span>Prompt 骨架：约束</span>
+                  <strong class="prompt-preview">{{
+                    (selectedSceneDirectPackage.prompt_input.constraints || []).join("，") || "暂无"
+                  }}</strong>
+                </div>
+                <div v-if="(selectedSceneDirectPackage.prompt_input.warnings || []).length"
+                  class="meta-row meta-row-wide">
+                  <span>Prompt 骨架：备注</span>
+                  <strong class="prompt-preview">{{
+                    (selectedSceneDirectPackage.prompt_input.warnings || []).join("；")
+                  }}</strong>
+                </div>
+              </div>
+
+              <details v-if="selectedSceneDirectPackage?.prompt_input?.raw_script_excerpt" class="debug-disclosure"
+                style="margin-bottom: 12px;">
+                <summary>调试查看：原始剧本摘录</summary>
+                <div class="meta-panel debug-panel">
+                  <div class="meta-row meta-row-wide">
+                    <span>Prompt 骨架：原文摘录</span>
+                    <strong class="prompt-preview">{{
+                      selectedSceneDirectPackage.prompt_input.raw_script_excerpt
+                    }}</strong>
+                  </div>
+                </div>
+              </details>
+
+              <div v-if="(selectedSceneDirectPackage?.script_context?.shot_outlines || []).length"
+                class="mini-list direct-beat-list" style="margin-bottom: 12px;">
+                <div v-for="item in selectedSceneDirectPackage.script_context.shot_outlines"
+                  :key="`scene-beat-${item.index}`" class="mini-card">
+                  <div class="item-body">
+                    <strong>节拍 {{ item.index }}</strong>
+                    <small>{{ formatReadableField(item.description) }}</small>
+                    <small>镜头建议：{{ formatReadableField(item.camera_summary) }}</small>
+                    <small>情绪：{{ formatReadableField(item.emotion) }}</small>
+                    <small>剧情节拍：{{ formatReadableField(item.beat) }}</small>
+                    <small>对白：{{ formatReadableField(item.dialogue_excerpt) }}</small>
+                  </div>
+                </div>
+              </div>
+              <el-button class="action-button warm full-width primary-action" :disabled="loading.createSceneDirectTask"
+                @click="handleCreateSceneDirectTask">
+                {{ loading.createSceneDirectTask ? "生成中..." : "生成场景任务草稿" }}
+              </el-button>
+            </template>
           </div>
 
-          <div class="panel-header sub-panel-header">
-            <div>
-              <p class="panel-kicker">快照列表</p>
-              <h3>本地快照</h3>
-            </div>
-          </div>
-
-          <div class="mini-list">
-            <div v-for="item in state.snapshots" :key="item.id" class="mini-card selectable"
-              :class="{ active: item.id === state.selectedSnapshotId }">
-              <div class="item-body" @click="handleOpenSnapshot(item)">
-                <strong>{{ item.id }}</strong>
-                <span>{{ item.storyboard_id }} · {{ item.shot_id }}</span>
-                <small>{{ formatSnapshotSource(item) }}</small>
-                <small>图片 {{ item.resolved_assets?.images?.length || 0 }}</small>
-              </div>
-              <div class="item-actions">
-                <el-button class="action-button ghost compact-button" @click.stop="handleOpenSnapshot(item)">
-                  查看
-                </el-button>
-                <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteSnapshot"
-                  @click.stop="handleDeleteSnapshot(item)">
-                  {{ loading.deleteSnapshot ? "删除中..." : "删除" }}
-                </el-button>
-              </div>
-            </div>
-            <div v-if="!state.snapshots.length" class="empty-state">当前还没有本地快照。</div>
-          </div>
-
-          <div v-if="state.selectedSnapshot && !selectedJobComputed" class="meta-panel">
-            <div class="meta-row">
-              <span>当前快照</span>
-              <strong>{{ state.selectedSnapshot.id }}</strong>
-            </div>
-            <div class="meta-row">
-              <span>所属分镜板 / 镜头</span>
-              <strong>{{ formatSnapshotSource(state.selectedSnapshot) }}</strong>
-            </div>
-            <div class="meta-row">
-              <span>引用图片数量</span>
-              <strong>{{ selectedSnapshotImageCount }}</strong>
-            </div>
-            <div class="meta-row">
-              <span>镜头卡路径</span>
-              <strong>{{ state.selectedSnapshot.inputs?.shot_card_path || "暂无" }}</strong>
-            </div>
-          </div>
-
-          <div v-if="selectedJobComputed" class="subsection">
-            <div class="panel-header">
+          <div class="execution-stage">
+            <div class="panel-header sub-panel-header execution-stage-header">
               <div>
-                <p class="panel-kicker">当前任务</p>
-                <h3>{{ selectedJobComputed.id }}</h3>
+                <p class="panel-kicker">Step 2</p>
+                <h3>快照</h3>
               </div>
-              <div class="inline-actions compact-actions">
-                <el-button class="action-button ghost"
-                  :disabled="loading.snapshotDetail || !selectedJobComputed.snapshot_id"
-                  @click="handleOpenJobSnapshot()">
-                  {{ loading.snapshotDetail ? "加载中..." : "查看快照" }}
-                </el-button>
-                <el-button class="action-button ghost"
-                  :disabled="loading.submitJob || loading.jobDetail || selectedJobComputed.status === 'submitting'"
-                  @click="handleSubmitJob">
-                  {{ loading.submitJob ? "提交中..." : "提交任务" }}
-                </el-button>
-                <el-button class="action-button dark"
-                  :disabled="loading.refreshJob || loading.jobDetail || !selectedJobComputed.remote?.task_id"
-                  @click="handleRefreshJob">
-                  {{ loading.refreshJob ? "刷新中..." : "刷新状态" }}
-                </el-button>
-              </div>
+              <span class="pill">{{ state.snapshots.length ? `${state.snapshots.length} 个` : "0 个" }}</span>
             </div>
 
-            <div class="meta-panel">
-              <div class="meta-row">
-                <span>状态</span>
-                <strong>{{ formatStatus(selectedJobComputed.status) }}</strong>
+            <div v-loading="snapshotsListLoading" element-loading-text="快照列表加载中..."
+              :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+              element-loading-background="rgba(7, 10, 14, 0.2)" class="mini-list">
+              <div v-for="item in state.snapshots" :key="item.id" class="mini-card selectable"
+                :class="{ active: item.id === state.selectedSnapshotId }">
+                <div class="item-body" @click="handleOpenSnapshot(item)">
+                  <strong>{{ item.id }}</strong>
+                  <span>{{ item.storyboard_id }} · {{ item.shot_id }}</span>
+                  <small>{{ formatSnapshotSource(item) }}</small>
+                  <small>图片 {{ item.resolved_assets?.images?.length || 0 }}</small>
+                </div>
+                <div class="item-actions">
+                  <el-button class="action-button ghost compact-button" @click.stop="handleOpenSnapshot(item)">
+                    查看
+                  </el-button>
+                  <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteSnapshot"
+                    @click.stop="handleDeleteSnapshot(item)">
+                    {{ loading.deleteSnapshot ? "删除中..." : "删除" }}
+                  </el-button>
+                </div>
               </div>
-              <div class="meta-row">
-                <span>供应商</span>
-                <strong>{{ formatProviderName(selectedJobComputed.provider?.name) }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>模型</span>
-                <strong>{{ selectedJobComputed.provider?.model || "暂未配置" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>任务接口</span>
-                <strong>{{ formatJobApiKind(selectedJobComputed.provider) }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>输入模式</span>
-                <strong>{{ selectedJobRequestSummary.modeLabel }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>图像引用</span>
-                <strong>{{ selectedJobRequestSummary.imageCount }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>输出规格</span>
-                <strong>{{ selectedJobRequestSummary.ratio }} · {{ selectedJobRequestSummary.resolution }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>时长 / 数量</span>
-                <strong>{{ selectedJobRequestSummary.duration || "未设置" }} 秒 · {{ selectedJobRequestSummary.count }}
-                  条</strong>
-              </div>
-              <div class="meta-row">
-                <span>音频 / 尾帧</span>
-                <strong>{{ selectedJobRequestSummary.hasAudio ? "有声" : "无声" }} ·
-                  {{ selectedJobRequestSummary.returnLastFrame ? "回传尾帧" : "不回传尾帧" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>远端任务 ID</span>
-                <strong>{{ selectedJobComputed.remote?.task_id || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>任务响应快照</span>
-                <strong>{{ selectedJobComputed.remote?.raw_response_path || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>结果视频</span>
-                <strong>{{ selectedJobComputed.result?.video_path || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>结果封面</span>
-                <strong>{{ selectedJobComputed.result?.cover_path || "暂无" }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>错误信息</span>
-                <strong>{{ selectedJobComputed.error?.message || "无" }}</strong>
-              </div>
+              <div v-if="!state.snapshots.length" class="empty-state">当前还没有本地快照。</div>
             </div>
 
-            <div v-if="state.selectedSnapshot" class="meta-panel">
+            <el-skeleton v-if="snapshotDetailSectionLoading" animated>
+              <template #template>
+                <div class="detail-skeleton-stack">
+                  <div class="skeleton-grid">
+                    <div class="skeleton-card" v-for="item in 4" :key="`snapshot-detail-skeleton-${item}`">
+                      <el-skeleton-item variant="text" class="skeleton-line" />
+                      <el-skeleton-item variant="h3" class="skeleton-line skeleton-line-mid" />
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </el-skeleton>
+            <div v-else-if="state.selectedSnapshot" class="meta-panel">
               <div class="meta-row">
-                <span>关联快照</span>
+                <span>当前快照</span>
                 <strong>{{ state.selectedSnapshot.id }}</strong>
               </div>
               <div class="meta-row">
@@ -4696,7 +5202,7 @@ onMounted(boot);
                 <strong>{{ selectedSnapshotImageCount }}</strong>
               </div>
               <div class="meta-row">
-                <span>镜头卡路径</span>
+                <span>卡片路径</span>
                 <strong>{{ state.selectedSnapshot.inputs?.shot_card_path || state.selectedSnapshot.inputs?.scene_card_path || "暂无" }}</strong>
               </div>
               <div class="meta-row">
@@ -4708,71 +5214,200 @@ onMounted(boot);
                 <strong>{{ state.selectedSnapshot.inputs?.scene_paths?.length || 0 }}</strong>
               </div>
             </div>
-
-            <div v-if="selectedJobCoverUrl || selectedJobVideoUrl" class="reference-grid">
-              <div v-if="selectedJobCoverUrl" class="reference-card">
-                <div class="reference-header">
-                  <strong>封面</strong>
-                  <small>{{ selectedJobComputed.result?.cover_path }}</small>
-                </div>
-                <el-image class="preview-image" :src="selectedJobCoverUrl"
-                  :preview-src-list="selectedJobCoverUrl ? [selectedJobCoverUrl] : []" :initial-index="0" fit="cover"
-                  preview-teleported />
-              </div>
-
-              <div v-if="selectedJobVideoUrl" class="reference-card">
-                <div class="reference-header">
-                  <strong>视频</strong>
-                  <small>{{ selectedJobComputed.result?.video_path }}</small>
-                </div>
-                <video class="video-preview" :src="selectedJobVideoUrl" controls preload="metadata" />
-              </div>
-            </div>
-
-            <div class="form-stack">
-              <label class="code-label">Seedance Request Body</label>
-              <el-input :model-value="selectedJobRequestText" class="field-textarea code-textarea job-code"
-                type="textarea" resize="vertical" :autosize="{ minRows: 8, maxRows: 16 }" readonly />
-            </div>
-
-            <div
-              v-if="selectedJobComputed.remote?.raw_response_path || Object.keys(selectedJobComputed.remote?.raw_response || {}).length"
-              class="form-stack">
-              <label class="code-label">Seedance Response</label>
-              <el-input :model-value="selectedJobResponseText" class="field-textarea code-textarea job-code"
-                type="textarea" resize="vertical" :autosize="{ minRows: 8, maxRows: 16 }" readonly />
-            </div>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-header">
-            <div>
-              <p class="panel-kicker">反馈</p>
-              <h2>状态面板</h2>
-            </div>
           </div>
 
-          <p v-if="state.notice" class="message success">{{ state.notice }}</p>
-          <p v-else class="message muted">操作结果和流程提醒会显示在这里。</p>
-          <p v-if="state.error" class="message error">{{ state.error }}</p>
+          <div class="execution-stage">
+            <div class="panel-header sub-panel-header execution-stage-header">
+              <div>
+                <p class="panel-kicker">Step 3</p>
+                <h3>提交草稿</h3>
+              </div>
+              <span class="pill">{{ state.jobs.length ? `${state.jobs.length} 个` : "0 个" }}</span>
+            </div>
 
-          <div class="meta-list">
-            <div>
-              <span>系列</span>
-              <strong>{{ selectedSeries?.name || "暂无" }}</strong>
+            <div v-loading="jobsListLoading" element-loading-text="任务列表加载中..." :element-loading-svg="loadingSpinnerSvg"
+              :element-loading-svg-view-box="loadingSpinnerViewBox" element-loading-background="rgba(7, 10, 14, 0.2)"
+              class="mini-list">
+              <div v-for="item in state.jobs" :key="item.id" class="mini-card selectable"
+                :class="{ active: item.id === state.selectedJobId }">
+                <div class="item-body" @click="state.selectedJobId = item.id">
+                  <strong>{{ item.id }}</strong>
+                  <span>{{ formatStatus(item.status) }}</span>
+                  <small>{{ formatSeedanceMode(getJobSeedanceSummary(item).mode) }} ·
+                    {{ item.provider?.model || "doubao-seedance-2-0-260128" }}</small>
+                  <small>输出：{{ getJobSeedanceSummary(item).ratio }} · {{ getJobSeedanceSummary(item).resolution }} ·
+                    {{ formatJobOutputSummary(item) }}</small>
+                  <small>素材：{{ formatJobReferenceSummary(item) }} ·
+                    {{ getJobSeedanceSummary(item).returnLastFrame ? "回传尾帧" : "不回传尾帧" }}</small>
+                  <small>关联快照：{{ item.snapshot_id || "暂无" }}</small>
+                </div>
+                <div class="item-actions">
+                  <el-button class="action-button ghost compact-button" @click.stop="handleOpenJobSnapshot(item)">
+                    查看快照
+                  </el-button>
+                  <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteJob"
+                    @click.stop="handleDeleteJob(item)">
+                    {{ loading.deleteJob ? "删除中..." : "删除" }}
+                  </el-button>
+                </div>
+              </div>
+              <div v-if="!state.jobs.length" class="empty-state">当前还没有任务草稿。</div>
             </div>
-            <div>
-              <span>剧集</span>
-              <strong>{{ selectedEpisode?.name || "暂无" }}</strong>
-            </div>
-            <div>
-              <span>分镜板</span>
-              <strong>{{ selectedStoryboard?.id || "暂无" }}</strong>
-            </div>
-            <div>
-              <span>输出根目录</span>
-              <strong>output/</strong>
+
+            <div v-if="selectedJobComputed" class="subsection">
+              <el-skeleton :loading="jobDetailSectionLoading" animated>
+                <template #template>
+                  <div class="detail-skeleton-stack">
+                    <div class="skeleton-card skeleton-header-card">
+                      <el-skeleton-item variant="text" class="skeleton-kicker" />
+                      <el-skeleton-item variant="h3" class="skeleton-title" />
+                      <div class="skeleton-chip-row">
+                        <el-skeleton-item variant="button" class="skeleton-chip" />
+                        <el-skeleton-item variant="button" class="skeleton-chip" />
+                        <el-skeleton-item variant="button" class="skeleton-chip" />
+                      </div>
+                    </div>
+                    <div class="skeleton-grid">
+                      <div class="skeleton-card" v-for="item in 6" :key="`job-detail-skeleton-${item}`">
+                        <el-skeleton-item variant="text" class="skeleton-line" />
+                        <el-skeleton-item variant="h3" class="skeleton-line skeleton-line-mid" />
+                      </div>
+                    </div>
+                    <div class="skeleton-card">
+                      <el-skeleton-item variant="image" class="skeleton-media" />
+                    </div>
+                    <div class="skeleton-card">
+                      <el-skeleton-item variant="text" class="skeleton-line" />
+                      <el-skeleton-item variant="text" class="skeleton-line skeleton-line-wide" />
+                      <el-skeleton-item variant="text" class="skeleton-line skeleton-line-wide" />
+                    </div>
+                  </div>
+                </template>
+                <template #default>
+                  <div class="panel-header">
+                    <div>
+                      <p class="panel-kicker">当前任务</p>
+                      <h3>{{ selectedJobComputed.id }}</h3>
+                    </div>
+                    <div class="inline-actions compact-actions" style="flex-shrink: 0;display: flex;gap: 12px;">
+
+                      <el-button class="action-button ghost"
+                        :disabled="loading.snapshotDetail || !selectedJobComputed.snapshot_id"
+                        @click="handleOpenJobSnapshot()">
+                        {{ loading.snapshotDetail ? "加载中..." : "查看快照" }}
+                      </el-button>
+                      <el-button class="action-button ghost"
+                        :disabled="loading.submitJob || loading.jobDetail || selectedJobComputed.status === 'submitting'"
+                        @click="handleSubmitJob">
+                        {{ loading.submitJob ? "提交中..." : "提交任务" }}
+                      </el-button>
+                      <el-button class="action-button dark"
+                        :disabled="loading.refreshJob || loading.jobDetail || !selectedJobComputed.remote?.task_id"
+                        @click="handleRefreshJob">
+                        {{ loading.refreshJob ? "刷新中..." : "刷新状态" }}
+                      </el-button>
+                    </div>
+                  </div>
+
+                  <div class="meta-panel">
+                    <div class="meta-row">
+                      <span>状态</span>
+                      <strong>{{ formatStatus(selectedJobComputed.status) }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>供应商</span>
+                      <strong>{{ formatProviderName(selectedJobComputed.provider?.name) }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>模型</span>
+                      <strong>{{ selectedJobComputed.provider?.model || "暂未配置" }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>任务接口</span>
+                      <strong>{{ formatJobApiKind(selectedJobComputed.provider) }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>输入模式</span>
+                      <strong>{{ selectedJobRequestSummary.modeLabel }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>图像引用</span>
+                      <strong>{{ selectedJobRequestSummary.imageCount }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>输出规格</span>
+                      <strong>{{ selectedJobRequestSummary.ratio }} ·
+                        {{ selectedJobRequestSummary.resolution }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>时长 / 数量</span>
+                      <strong>{{ selectedJobRequestSummary.duration || "未设置" }} 秒 ·
+                        {{ selectedJobRequestSummary.count }}
+                        条</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>音频 / 尾帧</span>
+                      <strong>{{ selectedJobRequestSummary.hasAudio ? "有声" : "无声" }} ·
+                        {{ selectedJobRequestSummary.returnLastFrame ? "回传尾帧" : "不回传尾帧" }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>远端任务 ID</span>
+                      <strong>{{ selectedJobComputed.remote?.task_id || "暂无" }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>任务响应快照</span>
+                      <strong>{{ selectedJobComputed.remote?.raw_response_path || "暂无" }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>结果视频</span>
+                      <strong>{{ selectedJobComputed.result?.video_path || "暂无" }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>结果封面</span>
+                      <strong>{{ selectedJobComputed.result?.cover_path || "暂无" }}</strong>
+                    </div>
+                    <div class="meta-row">
+                      <span>错误信息</span>
+                      <strong>{{ selectedJobComputed.error?.message || "无" }}</strong>
+                    </div>
+                  </div>
+
+                  <div v-if="selectedJobCoverUrl || selectedJobVideoUrl" class="reference-grid">
+                    <div v-if="selectedJobCoverUrl" class="reference-card">
+                      <div class="reference-header">
+                        <strong>封面</strong>
+                        <small>{{ selectedJobComputed.result?.cover_path }}</small>
+                      </div>
+                      <el-image class="preview-image" :src="selectedJobCoverUrl"
+                        :preview-src-list="selectedJobCoverUrl ? [selectedJobCoverUrl] : []" :initial-index="0"
+                        fit="cover" preview-teleported />
+                    </div>
+
+                    <div v-if="selectedJobVideoUrl" class="reference-card">
+                      <div class="reference-header">
+                        <strong>视频</strong>
+                        <small>{{ selectedJobComputed.result?.video_path }}</small>
+                      </div>
+                      <video class="video-preview" :src="selectedJobVideoUrl" controls preload="metadata" />
+                    </div>
+                  </div>
+
+                  <div class="form-stack">
+                    <label
+                      class="code-label">{{ selectedJobHasSubmittedRequest ? "Seedance 最终提交体" : "Seedance 提交草稿" }}</label>
+                    <el-input :model-value="selectedJobRequestText" class="field-textarea code-textarea job-code"
+                      type="textarea" resize="vertical" :autosize="{ minRows: 8, maxRows: 16 }" readonly />
+                  </div>
+
+                  <div
+                    v-if="selectedJobComputed.remote?.raw_response_path || Object.keys(selectedJobComputed.remote?.raw_response || {}).length"
+                    class="form-stack">
+                    <label class="code-label">Seedance Response</label>
+                    <el-input :model-value="selectedJobResponseText" class="field-textarea code-textarea job-code"
+                      type="textarea" resize="vertical" :autosize="{ minRows: 8, maxRows: 16 }" readonly />
+                  </div>
+                </template>
+              </el-skeleton>
             </div>
           </div>
         </section>
@@ -4824,6 +5459,38 @@ onMounted(boot);
   --el-message-border-color: rgba(255, 255, 255, 0.14);
   --el-message-text-color: #edf2f7;
   backdrop-filter: blur(18px);
+}
+
+.shell :deep(.el-loading-mask) {
+  backdrop-filter: blur(10px);
+  border-radius: 18px;
+}
+
+.shell :deep(.el-loading-spinner) {
+  margin-top: calc(0px - 28px);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.shell :deep(.el-loading-spinner .circular) {
+  width: 62px;
+  height: 62px;
+}
+
+.shell :deep(.el-loading-spinner .el-loading-text) {
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  color: #efffed;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: rgba(6, 10, 14, 0.56);
+  border: 1px solid rgba(116, 255, 82, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 30px rgba(0, 0, 0, 0.22);
 }
 
 :global(.el-message--success) {
@@ -5144,6 +5811,88 @@ h3 {
   margin-top: 14px;
 }
 
+.execution-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.flow-card {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    radial-gradient(circle at top right, rgba(116, 255, 82, 0.06), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.018)),
+    rgba(255, 255, 255, 0.024);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 22px rgba(0, 0, 0, 0.14);
+}
+
+.flow-card.active {
+  border-color: rgba(116, 255, 82, 0.28);
+  background:
+    radial-gradient(circle at top right, rgba(116, 255, 82, 0.14), transparent 26%),
+    linear-gradient(145deg, rgba(116, 255, 82, 0.08), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.03);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 0 0 1px rgba(116, 255, 82, 0.1),
+    0 12px 26px rgba(0, 0, 0, 0.16);
+}
+
+.flow-step {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(116, 255, 82, 0.12);
+  color: rgba(205, 255, 190, 0.84);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.flow-card strong {
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.flow-card small {
+  color: rgba(237, 242, 247, 0.62);
+  line-height: 1.55;
+}
+
+.flow-card em {
+  color: rgba(215, 255, 203, 0.84);
+  font-style: normal;
+  font-size: 11px;
+}
+
+.execution-stage {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.execution-stage:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.execution-stage-header {
+  margin-top: 0;
+}
+
 .panel-header>div {
   display: grid;
   gap: 4px;
@@ -5295,6 +6044,22 @@ h3 {
 .story-binding-header small {
   color: rgba(237, 242, 247, 0.68);
   line-height: 1.55;
+}
+
+.compact-stack {
+  gap: 8px;
+}
+
+.inline-label {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(237, 242, 247, 0.82);
+  font-size: 12px;
 }
 
 .shot-media-header {
@@ -5578,6 +6343,12 @@ h3 {
   letter-spacing: 0.02em;
 }
 
+.action-button.selected-variant {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 10px 24px rgba(72, 178, 44, 0.24);
+}
+
 .action-button.full-width {
   width: 100%;
   margin-bottom: 10px;
@@ -5658,6 +6429,124 @@ h3 {
   pointer-events: none;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
   opacity: 0.8;
+}
+
+.debug-disclosure {
+  display: grid;
+  gap: 8px;
+}
+
+.debug-disclosure summary {
+  cursor: pointer;
+  color: rgba(237, 242, 247, 0.72);
+  font-size: 12px;
+  user-select: none;
+  list-style: none;
+}
+
+.debug-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.debug-disclosure summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 160ms ease;
+}
+
+.debug-disclosure[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.debug-panel {
+  margin-top: 2px;
+}
+
+.storyboard-detail-section {
+  min-width: 0;
+}
+
+.detail-skeleton-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.skeleton-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    radial-gradient(circle at top right, rgba(116, 255, 82, 0.06), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.018)),
+    rgba(255, 255, 255, 0.024);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 24px rgba(0, 0, 0, 0.14);
+}
+
+.skeleton-header-card {
+  gap: 12px;
+}
+
+.skeleton-chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.skeleton-kicker {
+  width: 96px;
+}
+
+.skeleton-title {
+  width: min(260px, 70%);
+}
+
+.skeleton-line {
+  width: 100%;
+}
+
+.skeleton-line-mid {
+  width: 72%;
+}
+
+.skeleton-line-wide {
+  width: 88%;
+}
+
+.skeleton-chip {
+  width: 96px;
+  height: 32px;
+}
+
+.skeleton-button {
+  width: 156px;
+  height: 40px;
+}
+
+.skeleton-button-strong {
+  width: 180px;
+}
+
+.skeleton-media {
+  width: 100%;
+  height: 180px;
+  border-radius: 14px;
+}
+
+.detail-skeleton-stack :deep(.el-skeleton__item) {
+  --el-skeleton-color: rgba(255, 255, 255, 0.08);
+  --el-skeleton-to-color: rgba(116, 255, 82, 0.14);
+  border-radius: 12px;
 }
 
 .list-card::before,
@@ -5831,6 +6720,7 @@ h3 {
 .anchor-card span,
 .meta-row span {
   color: rgba(237, 242, 247, 0.6);
+  font-size: 14px;
 }
 
 .list-card span,
@@ -5904,6 +6794,10 @@ h3 {
 .compact-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.prompt-variant-actions {
+  width: 100%;
 }
 
 .inline-field {
@@ -6115,9 +7009,11 @@ h3 {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.6;
+  font-size: 14px;
 }
 
-.subsection>h3 {
+.subsection>h3,
+.mini-list>h3 {
   margin: 0;
   font-size: 13px;
   letter-spacing: 0.06em;
@@ -6232,6 +7128,7 @@ h3 {
   .studio-grid,
   .lab-grid,
   .summary-grid,
+  .execution-flow,
   .column-right,
   .split-grid,
   .check-grid,

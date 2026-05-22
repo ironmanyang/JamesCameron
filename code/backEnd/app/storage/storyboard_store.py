@@ -15,6 +15,10 @@ DEFAULT_SHOT_STORY = {
     "beat": "",
     "raw_script_excerpt": "",
 }
+DEFAULT_SHOT_ANCHOR_STRATEGY = {
+    "mode": "auto",
+    "per_character": {},
+}
 
 
 def get_storyboards_root(series_slug: str) -> Path:
@@ -191,10 +195,11 @@ def create_shot(
             "shot_index": 0,
         },
         "story": dict(DEFAULT_SHOT_STORY),
+        "anchor_strategy": dict(DEFAULT_SHOT_ANCHOR_STRATEGY),
         "dialogue": [],
         "media": {
             "mode": "reference_image",
-            "generate_audio": False,
+            "generate_audio": True,
             "first_frame_path": "",
             "last_frame_path": "",
             "reference_image_paths": [],
@@ -235,6 +240,10 @@ def create_shot(
             **DEFAULT_SHOT_STORY,
             **((payload.get("story") or {}) if isinstance(payload.get("story"), dict) else {}),
         }
+        payload["anchor_strategy"] = {
+            **DEFAULT_SHOT_ANCHOR_STRATEGY,
+            **((payload.get("anchor_strategy") or {}) if isinstance(payload.get("anchor_strategy"), dict) else {}),
+        }
         payload.setdefault("dialogue", [])
         payload.setdefault("media", {})
         payload.setdefault("characters", [])
@@ -270,6 +279,11 @@ def save_shot(series_slug: str, storyboard_id: str, shot_id: str, shot_data: dic
         **DEFAULT_SHOT_STORY,
         **((existing.get("story") or {}) if isinstance(existing.get("story"), dict) else {}),
         **((shot_data.get("story") or {}) if isinstance(shot_data.get("story"), dict) else {}),
+    }
+    merged["anchor_strategy"] = {
+        **DEFAULT_SHOT_ANCHOR_STRATEGY,
+        **((existing.get("anchor_strategy") or {}) if isinstance(existing.get("anchor_strategy"), dict) else {}),
+        **((shot_data.get("anchor_strategy") or {}) if isinstance(shot_data.get("anchor_strategy"), dict) else {}),
     }
     merged.setdefault("dialogue", existing.get("dialogue", []))
     merged.setdefault("media", existing.get("media", {}))
