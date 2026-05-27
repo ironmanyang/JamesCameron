@@ -2,6 +2,20 @@ node_modules/
 dist/
 .DS_Store
 *.log
+*.log.*
+*.tmp
+*.bak
+*.swp
+*.swo
+tmp_*.py
+tmp_*.txt
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
 
 output/
 
