@@ -241,17 +241,18 @@
 
                 <div v-loading="shotBatchesListLoading" element-loading-text="批次列表加载中..."
                   :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
-                  element-loading-background="rgba(7, 10, 14, 0.18)" class="mini-list nested-mini-list">
+                  element-loading-background="rgba(7, 10, 14, 0.18)"
+                  class="mini-list nested-mini-list compact-card-grid compact-card-grid-2">
                   <div v-for="batch in state.shotBatches" :key="batch.id" class="mini-card selectable"
                     :class="{ active: batch.id === state.selectedShotBatchId }">
-                    <div class="item-body" @click="state.selectedShotBatchId = batch.id">
+                    <div class="item-body compact-card-body" @click="state.selectedShotBatchId = batch.id">
                       <strong>{{ batch.name || batch.id }}</strong>
                       <span>{{ batch.id }} · {{ formatStatus(batch.status) }}</span>
                       <small>{{ formatShotBatchCounts(batch) }}</small>
                       <small>进度：{{ formatShotBatchProgress(batch) }} · 可提交
                         {{ getShotBatchSubmittableCount(batch) }}</small>
                     </div>
-                    <div class="item-actions">
+                    <div class="item-actions item-actions-block">
                       <el-button class="action-button ghost compact-button"
                         :disabled="loading.submitShotBatch || !getShotBatchSubmittableCount(batch)"
                         @click.stop="handleSubmitShotBatch(batch)">
@@ -294,16 +295,17 @@
                   </div>
                 </div>
 
-                <div v-if="selectedShotBatchComputed?.items?.length" class="mini-list nested-mini-list">
+                <div v-if="selectedShotBatchComputed?.items?.length"
+                  class="mini-list nested-mini-list compact-card-grid compact-card-grid-3">
                   <div v-for="batchItem in selectedShotBatchComputed.items"
                     :key="`${selectedShotBatchComputed.id}-${batchItem.shot_id}`" class="mini-card">
-                    <div class="item-body">
+                    <div class="item-body compact-card-body">
                       <strong>{{ batchItem.shot_id }}</strong>
                       <span>{{ formatStatus(batchItem.status) }}</span>
                       <small>快照：{{ batchItem.snapshot_id || "暂无" }} · 草稿：{{ batchItem.job_id || "暂无" }}</small>
                       <small>{{ batchItem.error || "无错误" }}</small>
                     </div>
-                    <div class="item-actions">
+                    <div class="item-actions item-actions-block">
                       <el-button v-if="batchItem.job_id" class="action-button ghost compact-button"
                         @click.stop="state.selectedJobId = batchItem.job_id">
                         打开草稿
@@ -338,14 +340,14 @@
               </el-button>
 
 
-              <div class="focus-card" style="margin-bottom: 12px;">
+              <div class="focus-card stack-block">
                 <span>当前场景</span>
                 <strong>{{state.scenes.find((item) => item.id === getSceneDirectSceneId())?.name || "请先选择场景"}}</strong>
                 <small>{{ getSceneDirectSceneId() || "未指定场景" }} · {{ formatShotInputMode(forms.shotInputMode) }} ·
                   {{ normalizeShotDuration(forms.shotDuration) }} 秒</small>
               </div>
 
-              <div v-if="selectedSceneDirectPackage?.positive" class="meta-panel" style="margin-bottom: 12px;">
+              <div v-if="selectedSceneDirectPackage?.positive" class="meta-panel stack-block">
                 <div class="meta-row">
                   <span>参考素材数量</span>
                   <strong>{{ selectedSceneDirectPackage.media_references?.length || selectedSceneDirectPackage.reference_images?.length || 0 }}</strong>
@@ -360,7 +362,7 @@
                 </div>
               </div>
 
-              <div v-if="selectedSceneDirectPackage?.script_context" class="meta-panel" style="margin-bottom: 12px;">
+              <div v-if="selectedSceneDirectPackage?.script_context" class="meta-panel stack-block">
                 <div class="meta-row">
                   <span>剧集标题</span>
                   <strong>{{ selectedSceneDirectPackage.script_context.episode_title || "暂无" }}</strong>
@@ -389,7 +391,7 @@
                 </div>
               </div>
 
-              <div v-if="selectedSceneDirectPackage?.prompt_generation" class="meta-panel" style="margin-bottom: 12px;">
+              <div v-if="selectedSceneDirectPackage?.prompt_generation" class="meta-panel stack-block">
                 <div class="meta-row">
                   <span>生成方式</span>
                   <strong>{{ formatPromptGenerationMode(selectedSceneDirectPackage.prompt_generation.mode) }}</strong>
@@ -408,7 +410,7 @@
                 </div>
               </div>
 
-              <div v-if="selectedSceneDirectPackage?.prompt_input" class="meta-panel" style="margin-bottom: 12px;">
+              <div v-if="selectedSceneDirectPackage?.prompt_input" class="meta-panel stack-block">
                 <div class="meta-row meta-row-wide">
                   <span>Prompt 骨架：参考绑定</span>
                   <strong class="prompt-preview">{{
@@ -459,8 +461,8 @@
                 </div>
               </div>
 
-              <details v-if="selectedSceneDirectPackage?.prompt_input?.raw_script_excerpt" class="debug-disclosure"
-                style="margin-bottom: 12px;">
+              <details v-if="selectedSceneDirectPackage?.prompt_input?.raw_script_excerpt"
+                class="debug-disclosure stack-block">
                 <summary>调试查看：原始剧本摘录</summary>
                 <div class="meta-panel debug-panel">
                   <div class="meta-row meta-row-wide">
@@ -473,10 +475,10 @@
               </details>
 
               <div v-if="(selectedSceneDirectPackage?.script_context?.shot_outlines || []).length"
-                class="mini-list direct-beat-list" style="margin-bottom: 12px;">
+                class="mini-list direct-beat-list compact-card-grid compact-card-grid-2 stack-block">
                 <div v-for="item in selectedSceneDirectPackage.script_context.shot_outlines"
                   :key="`scene-beat-${item.index}`" class="mini-card">
-                  <div class="item-body">
+                  <div class="item-body compact-card-body">
                     <strong>节拍 {{ item.index }}</strong>
                     <small>{{ formatReadableField(item.description) }}</small>
                     <small>镜头建议：{{ formatReadableField(item.camera_summary) }}</small>
@@ -508,18 +510,19 @@
               </div>
             </div>
 
-            <div v-loading="snapshotsListLoading" element-loading-text="快照列表加载中..."
+              <div v-loading="snapshotsListLoading" element-loading-text="快照列表加载中..."
               :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
-              element-loading-background="rgba(7, 10, 14, 0.2)" class="mini-list">
+              element-loading-background="rgba(7, 10, 14, 0.2)"
+              class="mini-list compact-card-grid compact-card-grid-3">
               <div v-for="item in state.snapshots" :key="item.id" class="mini-card selectable"
                 :class="{ active: item.id === state.selectedSnapshotId }">
-                <div class="item-body" @click="handleOpenSnapshot(item)">
+                <div class="item-body compact-card-body" @click="handleOpenSnapshot(item)">
                   <strong>{{ item.id }}</strong>
                   <span>{{ item.storyboard_id }} · {{ item.shot_id }}</span>
                   <small>{{ formatSnapshotSource(item) }}</small>
                   <small>图片 {{ item.resolved_assets?.images?.length || 0 }}</small>
                 </div>
-                <div class="item-actions">
+                <div class="item-actions item-actions-block">
                   <el-button class="action-button ghost compact-button" @click.stop="handleOpenSnapshot(item)">
                     查看
                   </el-button>
@@ -589,10 +592,10 @@
 
             <div v-loading="jobsListLoading" element-loading-text="任务列表加载中..." :element-loading-svg="loadingSpinnerSvg"
               :element-loading-svg-view-box="loadingSpinnerViewBox" element-loading-background="rgba(7, 10, 14, 0.2)"
-              class="mini-list">
+              class="mini-list compact-card-grid compact-card-grid-2">
               <div v-for="item in state.jobs" :key="item.id" class="mini-card selectable"
                 :class="{ active: item.id === state.selectedJobId }">
-                <div class="item-body" @click="state.selectedJobId = item.id">
+                <div class="item-body compact-card-body" @click="state.selectedJobId = item.id">
                   <strong>{{ item.id }}</strong>
                   <span>{{ formatStatus(item.status) }}</span>
                   <small>{{ formatSeedanceMode(getJobSeedanceSummary(item).mode) }} ·
@@ -603,7 +606,7 @@
                     {{ getJobSeedanceSummary(item).returnLastFrame ? "回传尾帧" : "不回传尾帧" }}</small>
                   <small>关联快照：{{ item.snapshot_id || "暂无" }}</small>
                 </div>
-                <div class="item-actions">
+                <div class="item-actions item-actions-block">
                   <el-button class="action-button ghost compact-button" @click.stop="handleOpenJobSnapshot(item)">
                     查看快照
                   </el-button>
@@ -651,7 +654,7 @@
                       <p class="panel-kicker">当前任务</p>
                       <h3>{{ selectedJobComputed.id }}</h3>
                     </div>
-                    <div class="inline-actions compact-actions" style="flex-shrink: 0;display: flex;gap: 12px;">
+                    <div class="inline-actions compact-actions panel-header-actions">
 
                       <el-button class="action-button ghost"
                         :disabled="loading.snapshotDetail || !selectedJobComputed.snapshot_id"
@@ -795,15 +798,16 @@
 
             <div v-loading="remoteTasksListLoading" element-loading-text="远程任务加载中..."
               :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
-              element-loading-background="rgba(7, 10, 14, 0.18)" class="mini-list">
+              element-loading-background="rgba(7, 10, 14, 0.18)"
+              class="mini-list compact-card-grid compact-card-grid-3">
               <div v-for="task in state.remoteTasks" :key="getRemoteTaskId(task)" class="mini-card selectable"
                 :class="{ active: getRemoteTaskId(task) === state.selectedRemoteTaskId }">
-                <div class="item-body" @click="state.selectedRemoteTaskId = getRemoteTaskId(task)">
+                <div class="item-body compact-card-body" @click="state.selectedRemoteTaskId = getRemoteTaskId(task)">
                   <strong>{{ getRemoteTaskId(task) }}</strong>
                   <span>{{ getRemoteTaskStatus(task) }}</span>
                   <small>关联草稿：{{ getRemoteTaskLinkedJob(task)?.id || "暂无" }}</small>
                 </div>
-                <div class="item-actions">
+                <div class="item-actions item-actions-block">
                   <el-button class="action-button ghost compact-button" :disabled="!getRemoteTaskLinkedJob(task)"
                     @click.stop="handleOpenRemoteTaskJob(task)">
                     打开草稿

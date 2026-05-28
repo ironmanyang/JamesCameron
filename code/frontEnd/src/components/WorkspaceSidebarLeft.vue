@@ -1,13 +1,8 @@
 <template>
   <aside class="column column-left">
-    <section
-      v-loading="seriesListPanelLoading"
-      element-loading-text="系列列表加载中..."
-      :element-loading-svg="loadingSpinnerSvg"
-      :element-loading-svg-view-box="loadingSpinnerViewBox"
-      element-loading-background="rgba(7, 10, 14, 0.2)"
-      class="panel "
-    >
+    <section v-loading="seriesListPanelLoading" element-loading-text="系列列表加载中..."
+      :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+      element-loading-background="rgba(7, 10, 14, 0.2)" class="panel ">
       <div class="panel-header">
         <div>
           <p class="panel-kicker">工作区</p>
@@ -16,23 +11,14 @@
       </div>
 
       <div class="list-stack">
-        <div
-          v-for="item in state.series"
-          :key="item.slug"
-          class="list-card"
-          :class="{ active: item.slug === state.selectedSeriesSlug }"
-        >
+        <div v-for="item in state.series" :key="item.slug" class="list-card"
+          :class="{ active: item.slug === state.selectedSeriesSlug }">
           <div class="item-body" @click="state.selectedSeriesSlug = item.slug">
             <template v-if="isEditingSeries(item.slug)">
               <div class="item-editor">
                 <el-input v-model="inlineEditing.seriesName" class="field" type="text" placeholder="输入系列名称" />
-                <el-input
-                  v-model="inlineEditing.seriesDescription"
-                  class="field-textarea compact"
-                  type="textarea"
-                  resize="vertical"
-                  placeholder="输入系列简介"
-                />
+                <el-input v-model="inlineEditing.seriesDescription" class="field-textarea compact" type="textarea"
+                  resize="vertical" placeholder="输入系列简介" />
               </div>
             </template>
             <template v-else>
@@ -42,29 +28,19 @@
             </template>
           </div>
           <div class="item-actions">
-            <el-button
-              v-if="isEditingSeries(item.slug)"
-              class="action-button dark compact-button"
-              :disabled="loading.updateSeries"
-              @click.stop="handleUpdateSeries(item)"
-            >
+            <el-button v-if="isEditingSeries(item.slug)" class="action-button dark compact-button"
+              :disabled="loading.updateSeries" @click.stop="handleUpdateSeries(item)">
               {{ loading.updateSeries ? "保存中..." : "保存" }}
             </el-button>
             <el-button v-else class="action-button ghost compact-button" @click.stop="startSeriesEdit(item)">
               编辑
             </el-button>
-            <el-button
-              v-if="isEditingSeries(item.slug)"
-              class="action-button ghost compact-button"
-              @click.stop="cancelSeriesEdit"
-            >
+            <el-button v-if="isEditingSeries(item.slug)" class="action-button ghost compact-button"
+              @click.stop="cancelSeriesEdit">
               取消
             </el-button>
-            <el-button
-              class="action-button ghost danger compact-button"
-              :disabled="loading.deleteSeries"
-              @click.stop="handleDeleteSeries(item)"
-            >
+            <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteSeries"
+              @click.stop="handleDeleteSeries(item)">
               {{ loading.deleteSeries ? "删除中..." : "删除" }}
             </el-button>
           </div>
@@ -76,14 +52,9 @@
       </div>
     </section>
 
-    <section
-      v-loading="seriesCreatePanelLoading"
-      element-loading-text="系列创建中..."
-      :element-loading-svg="loadingSpinnerSvg"
-      :element-loading-svg-view-box="loadingSpinnerViewBox"
-      element-loading-background="rgba(7, 10, 14, 0.16)"
-      class="panel"
-    >
+    <section v-loading="seriesCreatePanelLoading" element-loading-text="系列创建中..."
+      :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
+      element-loading-background="rgba(7, 10, 14, 0.16)" class="panel">
       <div class="panel-header">
         <div>
           <p class="panel-kicker">系列</p>
@@ -94,13 +65,8 @@
 
       <div class="form-stack">
         <el-input v-model="forms.seriesName" class="field" type="text" placeholder="输入系列名称" />
-        <el-input
-          v-model="forms.seriesDescription"
-          class="field-textarea compact"
-          type="textarea"
-          resize="vertical"
-          placeholder="输入系列简介"
-        />
+        <el-input v-model="forms.seriesDescription" class="field-textarea compact" type="textarea" resize="vertical"
+          placeholder="输入系列简介" />
         <el-button class="action-button warm" :disabled="loading.createSeries" @click="handleCreateSeries">
           {{ loading.createSeries ? "创建中..." : "新建系列" }}
         </el-button>

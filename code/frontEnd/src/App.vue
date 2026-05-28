@@ -97,6 +97,7 @@ import {
 } from "./utils/shotHelpers";
 import { createShot } from "./services/api";
 
+const workspaceStep = ref("script");
 const health = ref("checking");
 const characterSourceFiles = ref([]);
 const characterSourceInput = ref(null);
@@ -706,6 +707,7 @@ useWorkspaceWatchers({
 provideWorkspaceContext(
   buildWorkspaceContextValue({
     core: {
+      workspaceStep,
       health,
       characterSourceFiles,
       characterSourceInput,
@@ -816,11 +818,40 @@ provideWorkspaceContext(
 <template>
   <main class="shell">
     <WorkspaceHero />
-    <section class="workspace">
+    <section class="workspace-flow">
       <WorkspaceSidebarLeft />
-      <WorkspaceMainPanel />
-      <WorkspaceStoryboardPanel />
-      <WorkspaceExecutionPanel />
+
+      <div class="workspace-flow-stage">
+        <div class="workspace-flow-nav">
+          <el-button-group class="segmented-button-group workspace-step-group">
+            <el-button color="var(--ui-accent-solid)" :plain="workspaceStep !== 'script'" dark @click="workspaceStep = 'script'">
+              1. 剧本
+            </el-button>
+            <el-button color="var(--ui-accent-solid)" :plain="workspaceStep !== 'assets'" dark @click="workspaceStep = 'assets'">
+              2. 角色场景
+            </el-button>
+            <el-button color="var(--ui-accent-solid)" :plain="workspaceStep !== 'storyboard'" dark
+              @click="workspaceStep = 'storyboard'">
+              3. 分镜
+            </el-button>
+            <el-button color="var(--ui-accent-solid)" :plain="workspaceStep !== 'execution'" dark @click="workspaceStep = 'execution'">
+              4. 执行
+            </el-button>
+          </el-button-group>
+        </div>
+
+        <section v-show="workspaceStep === 'script' || workspaceStep === 'assets'" class="workspace-step">
+          <WorkspaceMainPanel />
+        </section>
+
+        <section v-show="workspaceStep === 'storyboard'" class="workspace-step">
+          <WorkspaceStoryboardPanel />
+        </section>
+
+        <section v-show="workspaceStep === 'execution'" class="workspace-step">
+          <WorkspaceExecutionPanel />
+        </section>
+      </div>
     </section>
   </main>
 </template>

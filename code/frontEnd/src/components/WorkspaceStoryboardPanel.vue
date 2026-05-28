@@ -13,16 +13,16 @@
             </el-button>
           </div>
 
-          <div class="mini-list">
-            <div v-for="item in filteredStoryboards" :key="item.id" class="mini-card selectable" style="display: flex;"
+          <div class="mini-list compact-card-grid compact-card-grid-3">
+            <div v-for="item in filteredStoryboards" :key="item.id" class="mini-card selectable"
               :class="{ active: item.id === state.selectedStoryboardId }">
-              <div class="item-body" @click="state.selectedStoryboardId = item.id">
+              <div class="item-body compact-card-body" @click="state.selectedStoryboardId = item.id">
                 <strong>{{ item.id }}</strong>
                 <span>{{ item.episode_id }}</span>
                 <small>{{ formatStoryboardProductionMode(item.production_mode) }}</small>
                 <small>{{ item.shot_ids.length }} 个镜头</small>
               </div>
-              <div class="item-actions">
+              <div class="item-actions item-actions-block">
                 <el-button class="action-button ghost danger compact-button" :disabled="loading.deleteStoryboard"
                   @click.stop="handleDeleteStoryboard(item)">
                   {{ loading.deleteStoryboard ? "删除中..." : "删除" }}
@@ -39,13 +39,13 @@
                 <p class="panel-kicker">生产模式</p>
                 <h3>{{ formatStoryboardProductionMode(selectedStoryboardProductionMode) }}</h3>
               </div>
-              <el-radio-group :model-value="selectedStoryboardProductionMode" class="view-switch storyboard-mode-switch"
-                @update:model-value="handleChangeStoryboardProductionMode" text-color="#fff"
-                fill="var(--ui-accent-soft)" style="display: flex;">
-                <el-radio-button v-for="item in storyboardProductionModeOptions" :key="item.value" :label="item.value">
+              <el-button-group class="segmented-button-group no-shrink">
+                <el-button v-for="item in storyboardProductionModeOptions" :key="item.value"
+                  color="var(--ui-accent-solid)" :plain="selectedStoryboardProductionMode !== item.value" dark
+                  @click="handleChangeStoryboardProductionMode(item.value)">
                   {{ item.label }}
-                </el-radio-button>
-              </el-radio-group>
+                </el-button>
+              </el-button-group>
             </div>
             <p class="inline-note">
               {{ selectedStoryboardProductionMode === "shot_pipeline"
@@ -57,18 +57,20 @@
           <template v-if="selectedStoryboardProductionMode === 'shot_pipeline'">
             <div class="subsection">
               <h3>新建镜头</h3>
-              <div class="form-stack">
-                <el-select v-model="forms.shotSceneId" class="field-select" placeholder="选择关联场景" clearable>
-                  <el-option v-for="item in state.scenes" :key="item.id" :label="`${item.name} · ${item.id}`"
-                    :value="item.id" />
-                </el-select>
+              <div class="form-stack compact-story-form">
+                <div class="compact-form-grid compact-form-grid-2">
+                  <el-select v-model="forms.shotSceneId" class="field-select" placeholder="选择关联场景" clearable>
+                    <el-option v-for="item in state.scenes" :key="item.id" :label="`${item.name} · ${item.id}`"
+                      :value="item.id" />
+                  </el-select>
 
-                <el-select v-model="forms.shotInputMode" class="field-select" placeholder="选择 Seedance 输入模式">
-                  <el-option v-for="item in shotInputModeOptions" :key="item.value" :label="item.label"
-                    :value="item.value" />
-                </el-select>
+                  <el-select v-model="forms.shotInputMode" class="field-select" placeholder="选择 Seedance 输入模式">
+                    <el-option v-for="item in shotInputModeOptions" :key="item.value" :label="item.label"
+                      :value="item.value" />
+                  </el-select>
+                </div>
 
-                <div class="split-grid">
+                <div class="compact-form-grid compact-form-grid-4">
                   <el-select v-model="forms.shotAspectRatio" class="field-select" placeholder="视频比例">
                     <el-option v-for="item in shotAspectRatioOptions" :key="item.value" :label="item.label"
                       :value="item.value" />
@@ -77,9 +79,7 @@
                     <el-option v-for="item in shotResolutionOptions" :key="item.value" :label="item.label"
                       :value="item.value" />
                   </el-select>
-                </div>
 
-                <div class="split-grid">
                   <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="15" :step="1">
                     <template #suffix>
                       <span>秒</span>
@@ -90,9 +90,22 @@
                       :value="item.value" />
                   </el-select>
                 </div>
-                <div class="split-grid">
-                  <el-checkbox v-model="forms.shotGenerateAudio">需要声音</el-checkbox>
+
+                <div class="compact-form-grid compact-form-grid-3">
+                  <div class="checkbox-tile">
+                    <el-checkbox v-model="forms.shotGenerateAudio">需要声音</el-checkbox>
+                  </div>
+                  <el-select v-model="forms.shotSize" class="field-select" placeholder="镜头景别">
+                    <el-option v-for="item in shotSizeOptions" :key="item.value" :label="item.label"
+                      :value="item.value" />
+                  </el-select>
+
+                  <el-select v-model="forms.shotMovement" class="field-select" placeholder="运镜方式">
+                    <el-option v-for="item in shotMovementOptions" :key="item.value" :label="item.label"
+                      :value="item.value" />
+                  </el-select>
                 </div>
+
                 <div v-if="isReferenceMode(forms.shotInputMode)" class="shot-media-panel">
                   <div class="shot-media-header">
                     <div>
@@ -167,66 +180,56 @@
                   </div>
                 </div>
 
-                <div class="split-grid">
-                  <el-select v-model="forms.shotSize" class="field-select" placeholder="镜头景别">
-                    <el-option v-for="item in shotSizeOptions" :key="item.value" :label="item.label"
-                      :value="item.value" />
-                  </el-select>
-
-                  <el-select v-model="forms.shotMovement" class="field-select" placeholder="运镜方式">
-                    <el-option v-for="item in shotMovementOptions" :key="item.value" :label="item.label"
-                      :value="item.value" />
-                  </el-select>
-                </div>
-
-                <div class="split-grid">
+                <div class="compact-form-grid compact-form-grid-2">
                   <el-input v-model="forms.shotLighting" class="field" type="text" placeholder="输入光线关键词" />
                   <el-input v-model="forms.shotPalette" class="field" type="text" placeholder="输入色调关键词" />
                 </div>
 
-                <div class="story-binding-panel">
-                  <div class="story-binding-header">
-                    <strong>剧情绑定</strong>
-                    <small>镜头卡自身保存剧情描述、对白与原文摘录，镜头包组装优先使用这里。</small>
+                <div class="compact-panel-grid">
+                  <div class="story-binding-panel">
+                    <div class="story-binding-header">
+                      <strong>剧情绑定</strong>
+                      <small>镜头卡自身保存剧情描述、对白与原文摘录，镜头包组装优先使用这里。</small>
+                    </div>
+                    <el-input v-model="forms.shotStoryDescription" class="field-textarea compact" type="textarea"
+                      :autosize="{ minRows: 2, maxRows: 4 }" placeholder="剧情描述：这个镜头里具体拍什么" />
+                    <div class="split-grid">
+                      <el-input v-model="forms.shotStoryEmotion" class="field" type="text" placeholder="情绪基调" />
+                      <el-input v-model="forms.shotStoryBeat" class="field" type="text" placeholder="剧情节拍 / 动作节点" />
+                    </div>
+                    <el-input v-model="forms.shotStoryDialogue" class="field-textarea compact" type="textarea"
+                      :autosize="{ minRows: 2, maxRows: 5 }" placeholder="对白，一行一句，例如：乌萨奇: 小八小八，别睡啦！" />
+                    <el-input v-model="forms.shotStoryRawExcerpt" class="field-textarea compact" type="textarea"
+                      :autosize="{ minRows: 2, maxRows: 6 }" placeholder="剧本原文摘录，可直接粘贴当前镜头对应的原始剧本片段" />
                   </div>
-                  <el-input v-model="forms.shotStoryDescription" class="field-textarea compact" type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 4 }" placeholder="剧情描述：这个镜头里具体拍什么" />
-                  <div class="split-grid">
-                    <el-input v-model="forms.shotStoryEmotion" class="field" type="text" placeholder="情绪基调" />
-                    <el-input v-model="forms.shotStoryBeat" class="field" type="text" placeholder="剧情节拍 / 动作节点" />
-                  </div>
-                  <el-input v-model="forms.shotStoryDialogue" class="field-textarea compact" type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 5 }" placeholder="对白，一行一句，例如：乌萨奇: 小八小八，别睡啦！" />
-                  <el-input v-model="forms.shotStoryRawExcerpt" class="field-textarea compact" type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 6 }" placeholder="剧本原文摘录，可直接粘贴当前镜头对应的原始剧本片段" />
-                </div>
 
-                <div class="story-binding-panel">
-                  <div class="story-binding-header">
-                    <strong>角色锚点策略</strong>
-                    <small>默认自动按景别抽取角色锚点；如有必要，可对当前镜头里的单个角色单独覆盖。</small>
-                  </div>
-                  <el-select v-model="forms.shotAnchorMode" class="field-select" placeholder="选择默认锚点策略">
-                    <el-option v-for="option in shotAnchorModeOptions" :key="option.value" :label="option.label"
-                      :value="option.value" />
-                  </el-select>
-                  <div v-if="state.selectedCharacterIds.length" class="form-stack compact-stack">
-                    <div v-for="characterId in state.selectedCharacterIds" :key="`create-anchor-${characterId}`"
-                      class="split-grid">
-                      <div class="inline-label">
-                        {{state.characters.find((item) => item.id === characterId)?.name || characterId}}
+                  <div class="story-binding-panel">
+                    <div class="story-binding-header">
+                      <strong>角色锚点策略</strong>
+                      <small>默认自动按景别抽取角色锚点；如有必要，可对当前镜头里的单个角色单独覆盖。</small>
+                    </div>
+                    <el-select v-model="forms.shotAnchorMode" class="field-select" placeholder="选择默认锚点策略">
+                      <el-option v-for="option in shotAnchorModeOptions" :key="option.value" :label="option.label"
+                        :value="option.value" />
+                    </el-select>
+                    <div v-if="state.selectedCharacterIds.length" class="compact-form-grid compact-form-grid-2 compact-stack">
+                      <div v-for="characterId in state.selectedCharacterIds" :key="`create-anchor-${characterId}`"
+                        class="split-grid">
+                        <div class="inline-label">
+                          {{state.characters.find((item) => item.id === characterId)?.name || characterId}}
+                        </div>
+                        <el-select :model-value="getShotAnchorOverrideValue(forms, characterId)" class="field-select"
+                          placeholder="跟随默认策略"
+                          @update:model-value="setShotAnchorOverrideValue(forms, characterId, $event)">
+                          <el-option v-for="option in shotAnchorModeOptions" :key="option.value" :label="option.label"
+                            :value="option.value" />
+                        </el-select>
                       </div>
-                      <el-select :model-value="getShotAnchorOverrideValue(forms, characterId)" class="field-select"
-                        placeholder="跟随默认策略"
-                        @update:model-value="setShotAnchorOverrideValue(forms, characterId, $event)">
-                        <el-option v-for="option in shotAnchorModeOptions" :key="option.value" :label="option.label"
-                          :value="option.value" />
-                      </el-select>
                     </div>
                   </div>
                 </div>
 
-                <el-checkbox-group v-model="state.selectedCharacterIds" class="check-grid">
+                <el-checkbox-group v-model="state.selectedCharacterIds" class="check-grid compact-check-grid">
                   <el-checkbox v-for="item in state.characters" :key="item.id" :value="item.id" class="check-card">
                     {{ item.name }}
                   </el-checkbox>
@@ -239,7 +242,7 @@
               </div>
             </div>
 
-            <div class="mini-list">
+            <div class="mini-list compact-card-grid compact-card-grid-3 shot-card-grid">
               <h3>导入的静头卡最好编辑一下，因为时间之类的都是默认的</h3>
               <div class="subsection-header">
                 <div class="inline-actions compact-actions">
@@ -256,8 +259,8 @@
                 </div>
               </div>
               <div v-for="item in state.shots" :key="item.id" class="mini-card selectable"
-                :class="{ active: item.id === state.selectedShotId }">
-                <div class="item-body" @click="state.selectedShotId = item.id">
+                :class="{ active: item.id === state.selectedShotId, editing: isEditingShot(item.id) }">
+                <div class="item-body compact-card-body" @click="state.selectedShotId = item.id">
                   <template v-if="isEditingShot(item.id)">
                     <div class="item-editor">
                       <el-select v-model="inlineEditing.shotSceneId" class="field-select" placeholder="选择关联场景">
@@ -412,7 +415,7 @@
                           <el-option v-for="option in shotAnchorModeOptions" :key="option.value" :label="option.label"
                             :value="option.value" />
                         </el-select>
-                        <div v-if="inlineEditing.shotCharacterIds.length" class="form-stack compact-stack">
+                        <div v-if="inlineEditing.shotCharacterIds.length" class="compact-form-grid compact-form-grid-2 compact-stack">
                           <div v-for="characterId in inlineEditing.shotCharacterIds" :key="`edit-anchor-${characterId}`"
                             class="split-grid">
                             <div class="inline-label">
@@ -427,7 +430,7 @@
                           </div>
                         </div>
                       </div>
-                      <el-checkbox-group v-model="inlineEditing.shotCharacterIds" class="check-grid">
+                      <el-checkbox-group v-model="inlineEditing.shotCharacterIds" class="check-grid compact-check-grid">
                         <el-checkbox v-for="character in state.characters" :key="character.id" :value="character.id"
                           class="check-card">
                           {{ character.name }}
@@ -461,7 +464,7 @@
                     <small>{{ (item.characters || []).length }} 个角色</small>
                   </template>
                 </div>
-                <div class="item-actions">
+                <div class="item-actions item-actions-block">
                   <el-button v-if="!isEditingShot(item.id)" class="action-button compact-button"
                     :class="isShotSelectedForBatch(item.id) ? 'warm' : 'ghost'"
                     @click.stop="toggleShotSelection(item.id)">
@@ -489,18 +492,20 @@
 
           <div v-else class="subsection">
             <h3>场景直出配置</h3>
-            <div class="form-stack">
-              <el-select v-model="forms.shotSceneId" class="field-select" placeholder="选择要直出的场景" clearable>
-                <el-option v-for="item in state.scenes" :key="item.id" :label="`${item.name} · ${item.id}`"
-                  :value="item.id" />
-              </el-select>
+            <div class="form-stack compact-story-form">
+              <div class="compact-form-grid compact-form-grid-2">
+                <el-select v-model="forms.shotSceneId" class="field-select" placeholder="选择要直出的场景" clearable>
+                  <el-option v-for="item in state.scenes" :key="item.id" :label="`${item.name} · ${item.id}`"
+                    :value="item.id" />
+                </el-select>
 
-              <el-select v-model="forms.shotInputMode" class="field-select" placeholder="选择 Seedance 输入模式">
-                <el-option v-for="item in shotInputModeOptions" :key="item.value" :label="item.label"
-                  :value="item.value" />
-              </el-select>
+                <el-select v-model="forms.shotInputMode" class="field-select" placeholder="选择 Seedance 输入模式">
+                  <el-option v-for="item in shotInputModeOptions" :key="item.value" :label="item.label"
+                    :value="item.value" />
+                </el-select>
+              </div>
 
-              <div class="split-grid">
+              <div class="compact-form-grid compact-form-grid-4">
                 <el-select v-model="forms.shotAspectRatio" class="field-select" placeholder="视频比例">
                   <el-option v-for="item in shotAspectRatioOptions" :key="item.value" :label="item.label"
                     :value="item.value" />
@@ -509,9 +514,7 @@
                   <el-option v-for="item in shotResolutionOptions" :key="item.value" :label="item.label"
                     :value="item.value" />
                 </el-select>
-              </div>
 
-              <div class="split-grid">
                 <el-input-number v-model="forms.shotDuration" class="field-number" :min="1" :max="15" :step="1">
                   <template #suffix>
                     <span>秒</span>
@@ -523,7 +526,20 @@
                 </el-select>
               </div>
 
-              <el-checkbox v-model="forms.shotGenerateAudio">需要声音</el-checkbox>
+              <div class="compact-form-grid compact-form-grid-3">
+                <div class="checkbox-tile">
+                  <el-checkbox v-model="forms.shotGenerateAudio">需要声音</el-checkbox>
+                </div>
+                <el-select v-model="forms.shotSize" class="field-select" placeholder="主镜头景别">
+                  <el-option v-for="item in shotSizeOptions" :key="item.value" :label="item.label"
+                    :value="item.value" />
+                </el-select>
+
+                <el-select v-model="forms.shotMovement" class="field-select" placeholder="主运镜方式">
+                  <el-option v-for="item in shotMovementOptions" :key="item.value" :label="item.label"
+                    :value="item.value" />
+                </el-select>
+              </div>
 
               <div v-if="isReferenceMode(forms.shotInputMode)" class="shot-media-panel">
                 <div class="shot-media-header">
@@ -599,24 +615,12 @@
                 </div>
               </div>
 
-              <div class="split-grid">
-                <el-select v-model="forms.shotSize" class="field-select" placeholder="主镜头景别">
-                  <el-option v-for="item in shotSizeOptions" :key="item.value" :label="item.label"
-                    :value="item.value" />
-                </el-select>
-
-                <el-select v-model="forms.shotMovement" class="field-select" placeholder="主运镜方式">
-                  <el-option v-for="item in shotMovementOptions" :key="item.value" :label="item.label"
-                    :value="item.value" />
-                </el-select>
-              </div>
-
-              <div class="split-grid">
+              <div class="compact-form-grid compact-form-grid-2">
                 <el-input v-model="forms.shotLighting" class="field" type="text" placeholder="输入光线关键词" />
                 <el-input v-model="forms.shotPalette" class="field" type="text" placeholder="输入色调关键词" />
               </div>
 
-              <el-checkbox-group v-model="state.selectedCharacterIds" class="check-grid">
+              <el-checkbox-group v-model="state.selectedCharacterIds" class="check-grid compact-check-grid">
                 <el-checkbox v-for="item in state.characters" :key="item.id" :value="item.id" class="check-card">
                   {{ item.name }}
                 </el-checkbox>
