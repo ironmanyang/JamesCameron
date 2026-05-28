@@ -17,6 +17,10 @@ import WorkspaceMainPanel from "./components/WorkspaceMainPanel.vue";
 import WorkspaceSidebarLeft from "./components/WorkspaceSidebarLeft.vue";
 import WorkspaceStoryboardPanel from "./components/WorkspaceStoryboardPanel.vue";
 import { provideWorkspaceContext } from "./components/workspaceContext";
+import { useWorkspaceDerived } from "./composables/useWorkspaceDerived";
+import { useWorkspaceEditing } from "./composables/useWorkspaceEditing";
+import { useWorkspaceLocalHelpers } from "./composables/useWorkspaceLocalHelpers";
+import { useParsedScriptEditor } from "./composables/useParsedScriptEditor";
 import {
   buildParsedCameraSummary,
   buildParsedShotDescription,
@@ -31,6 +35,7 @@ import {
   formatDialogueEntries,
   formatHealth,
   formatJobApiKind,
+  getJobSeedanceSummary,
   formatJobOutputSummary,
   formatJobReferenceSummary,
   formatLegacyCameraSummary,
@@ -51,7 +56,6 @@ import {
   formatSnapshotSource,
   formatStatus,
   formatStoryboardProductionMode,
-  getJobSeedanceSummary,
   getParsedShotDialogueEntries,
   getReadableSceneInfo,
   getReadableShotInfo,
@@ -416,248 +420,98 @@ function defaultParsedScript(title = "") {
   };
 }
 
-const selectedSeries = computed(() => state.series.find((item) => item.slug === state.selectedSeriesSlug) || null);
-const selectedEpisode = computed(() => state.episodes.find((item) => item.id === state.selectedEpisodeId) || null);
-const selectedCharacter = computed(
-  () => state.characters.find((item) => item.id === state.selectedCharacterId) || null
-);
-const selectedScene = computed(() => state.scenes.find((item) => item.id === state.selectedSceneId) || null);
-const filteredStoryboards = computed(() =>
-  state.storyboards.filter((item) => !state.selectedEpisodeId || item.episode_id === state.selectedEpisodeId)
-);
-const selectedStoryboard = computed(
-  () => filteredStoryboards.value.find((item) => item.id === state.selectedStoryboardId) || null
-);
-const selectedStoryboardProductionMode = computed(() =>
-  normalizeStoryboardProductionMode(selectedStoryboard.value?.production_mode)
-);
-const selectedSceneDirectPackage = computed(() => selectedStoryboard.value?.scene_direct_package || null);
-const selectedShot = computed(() => state.shots.find((item) => item.id === state.selectedShotId) || null);
-const selectedShotBatchComputed = computed(() => {
-  if (state.selectedShotBatch && state.selectedShotBatch.id === state.selectedShotBatchId) {
-    return state.selectedShotBatch;
-  }
-  return state.shotBatches.find((item) => item.id === state.selectedShotBatchId) || null;
-});
-const seriesListPanelLoading = computed(() => loading.boot || loading.series || loading.updateSeries || loading.deleteSeries);
-const seriesCreatePanelLoading = computed(() => loading.createSeries);
-const episodesPanelLoading = computed(
-  () => loading.boot || loading.production || loading.episodes || loading.createEpisode || loading.updateEpisode || loading.deleteEpisode
-);
-const rawScriptPanelLoading = computed(() => loading.boot || loading.scripts || loading.analyzeScript || loading.saveRaw);
-const parsedScriptPanelLoading = computed(
-  () => loading.boot || loading.scripts || loading.analyzeScript || loading.saveParsed || loading.importParsedShot
-);
-const characterCreatePanelLoading = computed(
-  () => loading.boot || loading.production || loading.createCharacter || loading.updateCharacter || loading.deleteCharacter
-);
-const sceneCreatePanelLoading = computed(
-  () => loading.boot || loading.production || loading.createScene || loading.updateScene || loading.deleteScene
-);
-const characterLabPanelLoading = computed(
-  () =>
-    loading.boot ||
-    loading.production ||
-    loading.characterAssets ||
-    loading.characterUpload ||
-    loading.deleteCharacterSourceImage ||
-    loading.characterBible
-);
-const sceneLabPanelLoading = computed(
-  () => loading.boot || loading.production || loading.sceneAssets || loading.scenePackage
-);
-const storyboardConfigPanelLoading = computed(
-  () =>
-    loading.boot ||
-    loading.production ||
-    loading.shots ||
-    loading.createStoryboard ||
-    loading.deleteStoryboard ||
-    loading.createShot ||
-    loading.updateShot ||
-    loading.deleteShot ||
-    loading.clearShots ||
-    loading.shotMediaUpload
-);
-const executionPanelLoading = computed(
-  () =>
-    loading.shotPackage ||
-    loading.sceneDirectPackage ||
-    loading.createRender ||
-    loading.createSceneDirectTask ||
-    loading.updateShot ||
-    loading.createShotBatch ||
-    loading.deleteShotBatch ||
-    loading.clearShotBatches ||
-    loading.retryShotBatch ||
-    loading.submitShotBatch ||
-    loading.refreshShotBatch
-);
-const storyboardListLoading = computed(() => loading.production && !filteredStoryboards.value.length);
-const storyboardDetailLoading = computed(
-  () =>
-    Boolean(state.selectedStoryboardId) &&
-    (loading.production ||
-      loading.shots ||
-      loading.updateStoryboard ||
-      loading.deleteStoryboard ||
-      loading.createShot ||
-      loading.updateShot ||
-      loading.deleteShot ||
-      loading.clearShots ||
-      loading.shotMediaUpload ||
-      loading.shotPackage ||
-      loading.sceneDirectPackage ||
-      loading.createRender ||
-      loading.createSceneDirectTask)
-);
-const jobsListLoading = computed(
-  () => (loading.production && !state.jobs.length) || loading.deleteJob || loading.clearJobs
-);
-const shotBatchesListLoading = computed(
-  () =>
-    loading.shotBatches ||
-    loading.createShotBatch ||
-    loading.deleteShotBatch ||
-    loading.clearShotBatches ||
-    loading.retryShotBatch ||
-    loading.submitShotBatch ||
-    loading.refreshShotBatch
-);
-const remoteTasksListLoading = computed(
-  () => loading.remoteTasks || loading.remoteTaskDetail || loading.deleteRemoteTask
-);
-const snapshotsListLoading = computed(
-  () => (loading.production && !state.snapshots.length) || loading.deleteSnapshot || loading.clearSnapshots
-);
-const jobDetailSectionLoading = computed(
-  () =>
-    Boolean(state.selectedJobId) &&
-    (loading.jobDetail || loading.submitJob || loading.refreshJob)
-);
-const snapshotDetailSectionLoading = computed(
-  () => Boolean(state.selectedSnapshotId) && loading.snapshotDetail
-);
-const selectedJobComputed = computed(() => {
-  if (state.selectedJob && state.selectedJob.id === state.selectedJobId) {
-    return state.selectedJob;
-  }
-  return state.jobs.find((item) => item.id === state.selectedJobId) || null;
-});
-const selectedRemoteTaskComputed = computed(() => {
-  const selectedTask = state.selectedRemoteTask;
-  const selectedTaskId = getRemoteTaskId(selectedTask);
-  if (selectedTask && selectedTaskId && selectedTaskId === state.selectedRemoteTaskId) {
-    return selectedTask;
-  }
-  return state.remoteTasks.find((item) => getRemoteTaskId(item) === state.selectedRemoteTaskId) || null;
-});
-const selectedShotPromptPackage = computed(() => selectedShot.value?.prompt_package || null);
-const selectedShotPromptVariants = computed(() => {
-  const promptPackage = selectedShotPromptPackage.value || {};
-  const rawVariants =
-    promptPackage.prompt_variants && typeof promptPackage.prompt_variants === "object"
-      ? promptPackage.prompt_variants
-      : {};
-  const fallbackTemplate = String(rawVariants.fallback_template || promptPackage.positive || "").trim();
-  const aiRefined = String(rawVariants.ai_refined || "").trim();
-
-  return {
-    ai_refined: aiRefined,
-    fallback_template: fallbackTemplate
-  };
-});
-const selectedShotPromptVariant = computed(() => {
-  const promptPackage = selectedShotPromptPackage.value || {};
-  const variants = selectedShotPromptVariants.value;
-  const selectedVariant = String(promptPackage.selected_prompt_variant || "").trim();
-
-  if (selectedVariant === "ai_refined" && variants.ai_refined) {
-    return "ai_refined";
-  }
-  if (selectedVariant === "fallback_template" && variants.fallback_template) {
-    return "fallback_template";
-  }
-  if (variants.ai_refined && promptPackage.positive === variants.ai_refined) {
-    return "ai_refined";
-  }
-  if (variants.fallback_template && promptPackage.positive === variants.fallback_template) {
-    return "fallback_template";
-  }
-  if (variants.ai_refined) {
-    return "ai_refined";
-  }
-  return "fallback_template";
-});
-const selectedShotPromptPreview = computed(
-  () => selectedShotPromptVariants.value[selectedShotPromptVariant.value] || selectedShotPromptPackage.value?.positive || ""
-);
-const parsedScriptObject = computed(() => {
-  try {
-    return JSON.parse(state.parsedScriptText || "{}");
-  } catch {
-    return null;
-  }
-});
-const parsedScriptReadableOutline = computed(() => parsedScriptObject.value?.readable_outline || null);
-const parsedScriptReadableScenes = computed(() => parsedScriptObject.value?.scenes || []);
-const selectedJobRequestBody = computed(() => normalizeSeedanceRequestBodyForDisplay(selectedJobComputed.value));
-const selectedJobRequestSummary = computed(() => buildSeedanceRequestSummary(selectedJobRequestBody.value));
-const selectedJobHasSubmittedRequest = computed(() => {
-  const submittedRequestBody = selectedJobComputed.value?.provider?.submitted_request_body;
-  return Boolean(
-    submittedRequestBody &&
-    typeof submittedRequestBody === "object" &&
-    Object.keys(submittedRequestBody).length
-  );
-});
-const selectedJobRequestText = computed(() => JSON.stringify(selectedJobRequestBody.value, null, 2));
-const selectedJobResponseText = computed(() =>
-  JSON.stringify(selectedJobComputed.value?.remote?.raw_response || {}, null, 2)
-);
-const selectedJobVideoUrl = computed(() => assetUrl(selectedJobComputed.value?.result?.video_path || ""));
-const selectedJobCoverUrl = computed(() => assetUrl(selectedJobComputed.value?.result?.cover_path || ""));
-const selectedRemoteTaskText = computed(() =>
-  JSON.stringify(selectedRemoteTaskComputed.value || {}, null, 2)
-);
-const selectedRemoteTaskVideoUrl = computed(() => {
-  const content = selectedRemoteTaskComputed.value?.content || {};
-  return String(content.video_url || content.url || "").trim();
-});
-const selectedRemoteTaskCoverUrl = computed(() => {
-  const content = selectedRemoteTaskComputed.value?.content || {};
-  return String(content.last_frame_url || content.cover_url || "").trim();
-});
-const selectedSnapshotImageCount = computed(
-  () => state.selectedSnapshot?.resolved_assets?.images?.length || 0
-);
-
-const selectedCharacterImageEntries = computed(() => {
-  const images = selectedCharacter.value?.reference_images || {};
-  return [
-    { key: "sheet", label: "角色圣经拼图", path: images.sheet || "" }
-  ];
+const workspaceLocalHelpers = useWorkspaceLocalHelpers({
+  state,
+  assetUrl,
+  formatShotAnchorOverridesDisplayWithCharacters,
+  getAutoReferenceSummaryWithAssets,
+  formatSceneLabelWithScenes
 });
 
-const selectedCharacterSourceEntries = computed(() =>
-  (selectedCharacter.value?.source_images || []).map((item, index) => ({
-    key: `${item.path || "source"}-${index}`,
-    label: item.original_name || `参考图 ${index + 1}`,
-    path: item.path || ""
-  }))
-);
-const hasUploadedCharacterSourceImages = computed(() => selectedCharacterSourceEntries.value.length > 0);
-const selectedCharacterAnchorEntries = computed(() =>
-  Object.entries(selectedCharacter.value?.anchors || {})
-    .filter(([key]) => ["face", "hair", "costume", "aura"].includes(key))
-);
+const {
+  getJobById,
+  getRemoteTaskId,
+  getRemoteTaskIdByJob,
+  getLinkedRemoteTaskIds,
+  getRemoteTaskLinkedJob,
+  getRemoteTaskStatus,
+  isShotSelectedForBatch,
+  toggleShotSelection,
+  selectAllShotsForBatch,
+  clearShotSelection,
+  getShotBatchSubmittableCount,
+  getBatchCompletedItems,
+  getBatchJobVideoUrl,
+  getBatchJobCoverUrl,
+  formatShotAnchorOverridesDisplay,
+  getAutoReferenceSummary,
+  formatSceneLabel
+} = workspaceLocalHelpers;
 
-const selectedSceneImageEntries = computed(() => {
-  const images = selectedScene.value?.reference_images || {};
-  return [
-    { key: "sheet", label: "场景参考拼图", path: images.sheet || "" }
-  ];
+const workspaceDerived = useWorkspaceDerived({
+  state,
+  loading,
+  assetUrl,
+  getJobById,
+  getRemoteTaskId
 });
+
+const {
+  selectedSeries,
+  selectedEpisode,
+  selectedCharacter,
+  selectedScene,
+  filteredStoryboards,
+  selectedStoryboard,
+  selectedStoryboardProductionMode,
+  selectedSceneDirectPackage,
+  selectedShot,
+  selectedShotBatchComputed,
+  seriesListPanelLoading,
+  seriesCreatePanelLoading,
+  episodesPanelLoading,
+  rawScriptPanelLoading,
+  parsedScriptPanelLoading,
+  characterCreatePanelLoading,
+  sceneCreatePanelLoading,
+  characterLabPanelLoading,
+  sceneLabPanelLoading,
+  storyboardConfigPanelLoading,
+  executionPanelLoading,
+  storyboardListLoading,
+  storyboardDetailLoading,
+  jobsListLoading,
+  shotBatchesListLoading,
+  remoteTasksListLoading,
+  snapshotsListLoading,
+  jobDetailSectionLoading,
+  snapshotDetailSectionLoading,
+  selectedJobComputed,
+  selectedRemoteTaskComputed,
+  selectedShotPromptPackage,
+  selectedShotPromptVariants,
+  selectedShotPromptVariant,
+  selectedShotPromptPreview,
+  parsedScriptObject,
+  parsedScriptReadableOutline,
+  parsedScriptReadableScenes,
+  selectedJobRequestBody,
+  selectedJobRequestSummary,
+  selectedJobHasSubmittedRequest,
+  selectedJobRequestText,
+  selectedJobResponseText,
+  selectedJobVideoUrl,
+  selectedJobCoverUrl,
+  selectedRemoteTaskText,
+  selectedRemoteTaskVideoUrl,
+  selectedRemoteTaskCoverUrl,
+  selectedSnapshotImageCount,
+  selectedCharacterImageEntries,
+  selectedCharacterSourceEntries,
+  hasUploadedCharacterSourceImages,
+  selectedCharacterAnchorEntries,
+  selectedSceneImageEntries
+} = workspaceDerived;
 
 function setNotice(message) {
   state.notice = message;
@@ -711,243 +565,73 @@ async function confirmDanger(message, title = "确认操作") {
   }
 }
 
-function isEditingSeries(seriesSlug) {
-  return inlineEditing.seriesSlug === seriesSlug;
+const workspaceEditing = useWorkspaceEditing({
+  state,
+  inlineEditing,
+  normalizeShotInputMode,
+  serializeMediaPaths,
+  serializeDialogueEntries,
+  normalizeShotAnchorMode,
+  normalizeShotAnchorOverrides
+});
+
+const {
+  isEditingSeries,
+  isEditingEpisode,
+  isEditingCharacter,
+  isEditingScene,
+  isEditingShot,
+  startSeriesEdit,
+  cancelSeriesEdit,
+  startEpisodeEdit,
+  cancelEpisodeEdit,
+  startCharacterEdit,
+  cancelCharacterEdit,
+  startSceneEdit,
+  cancelSceneEdit,
+  startShotEdit,
+  cancelShotEdit,
+  syncAssetCounts
+} = workspaceEditing;
+
+function getSceneDirectSceneId() {
+  const formSceneId = String(forms.shotSceneId || "").trim();
+  if (formSceneId) {
+    return formSceneId;
+  }
+
+  const selectedSceneId = String(state.selectedSceneId || "").trim();
+  if (selectedSceneId) {
+    return selectedSceneId;
+  }
+
+  return String(state.scenes[0]?.id || "").trim();
 }
 
-function isEditingEpisode(episodeId) {
-  return inlineEditing.episodeId === episodeId;
-}
-
-function isEditingCharacter(characterId) {
-  return inlineEditing.characterId === characterId;
-}
-
-function isEditingScene(sceneId) {
-  return inlineEditing.sceneId === sceneId;
-}
-
-function isEditingShot(shotId) {
-  return inlineEditing.shotId === shotId;
-}
-
-function startSeriesEdit(item) {
-  inlineEditing.seriesSlug = item.slug;
-  inlineEditing.seriesName = item.name || "";
-  inlineEditing.seriesDescription = item.description || "";
-  state.selectedSeriesSlug = item.slug;
-}
-
-function cancelSeriesEdit() {
-  inlineEditing.seriesSlug = "";
-  inlineEditing.seriesName = "";
-  inlineEditing.seriesDescription = "";
-}
-
-function startEpisodeEdit(item) {
-  inlineEditing.episodeId = item.id;
-  inlineEditing.episodeName = item.name || "";
-  state.selectedEpisodeId = item.id;
-}
-
-function cancelEpisodeEdit() {
-  inlineEditing.episodeId = "";
-  inlineEditing.episodeName = "";
-}
-
-function startCharacterEdit(item) {
-  inlineEditing.characterId = item.id;
-  inlineEditing.characterName = item.name || "";
-  inlineEditing.characterBrief = item.brief || "";
-  state.selectedCharacterId = item.id;
-}
-
-function cancelCharacterEdit() {
-  inlineEditing.characterId = "";
-  inlineEditing.characterName = "";
-  inlineEditing.characterBrief = "";
-}
-
-function startSceneEdit(item) {
-  inlineEditing.sceneId = item.id;
-  inlineEditing.sceneName = item.name || "";
-  inlineEditing.sceneDescription = item.description || "";
-  state.selectedSceneId = item.id;
-}
-
-function cancelSceneEdit() {
-  inlineEditing.sceneId = "";
-  inlineEditing.sceneName = "";
-  inlineEditing.sceneDescription = "";
-}
-
-function startShotEdit(item) {
-  const media = item.media || {};
-  const visual = item.visual || {};
-  const story = item.story || {};
-  const anchorStrategy = item.anchor_strategy || {};
-  inlineEditing.shotId = item.id;
-  inlineEditing.shotSceneId = item.scene_id || "";
-  inlineEditing.shotInputMode = normalizeShotInputMode(media.mode);
-  inlineEditing.shotGenerateAudio = Boolean(media.generate_audio);
-  inlineEditing.shotAspectRatio = visual.aspect_ratio || "16:9";
-  inlineEditing.shotResolution = visual.resolution || "1080p";
-  inlineEditing.shotGenerationCount = Number(visual.generation_count) || 1;
-  inlineEditing.shotFirstFramePath = media.first_frame_path || "";
-  inlineEditing.shotLastFramePath = media.last_frame_path || "";
-  inlineEditing.shotReferenceImagesText = serializeMediaPaths(media.reference_image_paths);
-  inlineEditing.shotSize = item.visual?.shot_size || "medium";
-  inlineEditing.shotMovement = item.visual?.camera_movement || "static";
-  inlineEditing.shotDuration = item.visual?.duration_seconds || 5;
-  inlineEditing.shotLighting = item.visual?.lighting || "";
-  inlineEditing.shotPalette = item.visual?.palette || "";
-  inlineEditing.shotCharacterIds = [...(item.characters || [])];
-  inlineEditing.shotStoryDescription = story.description || "";
-  inlineEditing.shotStoryEmotion = story.emotion || "";
-  inlineEditing.shotStoryBeat = story.beat || "";
-  inlineEditing.shotStoryDialogue = serializeDialogueEntries(item.dialogue || []);
-  inlineEditing.shotStoryRawExcerpt = story.raw_script_excerpt || "";
-  inlineEditing.shotAnchorMode = normalizeShotAnchorMode(anchorStrategy.mode);
-  inlineEditing.shotAnchorOverrides = normalizeShotAnchorOverrides(
-    anchorStrategy.per_character,
-    item.characters || []
-  );
-  state.selectedShotId = item.id;
-}
-
-function cancelShotEdit() {
-  inlineEditing.shotId = "";
-  inlineEditing.shotSceneId = "";
-  inlineEditing.shotInputMode = "reference_image";
-  inlineEditing.shotGenerateAudio = true;
-  inlineEditing.shotAspectRatio = "16:9";
-  inlineEditing.shotResolution = "1080p";
-  inlineEditing.shotGenerationCount = 1;
-  inlineEditing.shotFirstFramePath = "";
-  inlineEditing.shotLastFramePath = "";
-  inlineEditing.shotReferenceImagesText = "";
-  inlineEditing.shotSize = "medium";
-  inlineEditing.shotMovement = "static";
-  inlineEditing.shotDuration = 5;
-  inlineEditing.shotLighting = "";
-  inlineEditing.shotPalette = "";
-  inlineEditing.shotCharacterIds = [];
-  inlineEditing.shotStoryDescription = "";
-  inlineEditing.shotStoryEmotion = "";
-  inlineEditing.shotStoryBeat = "";
-  inlineEditing.shotStoryDialogue = "";
-  inlineEditing.shotStoryRawExcerpt = "";
-  inlineEditing.shotAnchorMode = "auto";
-  inlineEditing.shotAnchorOverrides = {};
-}
-
-function syncAssetCounts() {
-  state.assets = {
-    characters: state.characters.length,
-    scenes: state.scenes.length,
-    storyboards: state.storyboards.length,
-    snapshots: state.snapshots.length,
-    jobs: state.jobs.length
+function buildSceneDirectPayload() {
+  const sceneId = getSceneDirectSceneId();
+  const visual = {
+    aspect_ratio: forms.shotAspectRatio,
+    style: "cinematic realism",
+    resolution: forms.shotResolution,
+    generation_count: normalizeShotGenerationCount(forms.shotGenerationCount),
+    shot_size: forms.shotSize,
+    camera_angle: "eye_level",
+    camera_movement: forms.shotMovement,
+    lens: "50mm",
+    depth_of_field: "medium",
+    lighting: String(forms.shotLighting || "").trim(),
+    palette: String(forms.shotPalette || "").trim(),
+    duration_seconds: normalizeShotDuration(forms.shotDuration)
   };
-}
 
-function getJobById(jobId) {
-  const normalizedJobId = String(jobId || "").trim();
-  if (!normalizedJobId) {
-    return null;
-  }
-  if (state.selectedJob?.id === normalizedJobId) {
-    return state.selectedJob;
-  }
-  return state.jobs.find((item) => item.id === normalizedJobId) || null;
-}
-
-function getRemoteTaskId(task) {
-  if (!task || typeof task !== "object") {
-    return "";
-  }
-  return String(task.id || task.task_id || task.job_id || "").trim();
-}
-
-function getRemoteTaskIdByJob(job) {
-  return String(job?.remote?.task_id || "").trim();
-}
-
-function getLinkedRemoteTaskIds(jobs = state.jobs) {
-  return [...new Set((jobs || []).map((item) => getRemoteTaskIdByJob(item)).filter(Boolean))];
-}
-
-function getRemoteTaskLinkedJob(task) {
-  const taskId = getRemoteTaskId(task);
-  if (!taskId) {
-    return null;
-  }
-  if (getRemoteTaskIdByJob(state.selectedJob) === taskId) {
-    return state.selectedJob;
-  }
-  return state.jobs.find((item) => getRemoteTaskIdByJob(item) === taskId) || null;
-}
-
-function getRemoteTaskStatus(task) {
-  return String(task?.status || task?.state || "").trim() || "unknown";
-}
-
-function isShotSelectedForBatch(shotId) {
-  return state.selectedShotIds.includes(String(shotId || "").trim());
-}
-
-function toggleShotSelection(shotId, checked = null) {
-  const normalizedShotId = String(shotId || "").trim();
-  if (!normalizedShotId) {
-    return;
-  }
-
-  const hasShot = state.selectedShotIds.includes(normalizedShotId);
-  const shouldSelect = typeof checked === "boolean" ? checked : !hasShot;
-  if (shouldSelect && !hasShot) {
-    state.selectedShotIds = [...state.selectedShotIds, normalizedShotId];
-  } else if (!shouldSelect && hasShot) {
-    state.selectedShotIds = state.selectedShotIds.filter((item) => item !== normalizedShotId);
-  }
-}
-
-function selectAllShotsForBatch() {
-  state.selectedShotIds = state.shots.map((item) => item.id).filter(Boolean);
-}
-
-function clearShotSelection() {
-  state.selectedShotIds = [];
-}
-
-function getShotBatchSubmittableCount(batch) {
-  return (batch?.items || []).filter((item) => ["draft_ready", "failed"].includes(String(item?.status || "").trim())).length;
-}
-
-function getBatchCompletedItems(batch) {
-  return (batch?.items || []).filter((item) => {
-    const job = getJobById(item.job_id);
-    return Boolean(job?.result?.video_path || job?.result?.cover_path);
-  });
-}
-
-function getBatchJobVideoUrl(jobId) {
-  return assetUrl(getJobById(jobId)?.result?.video_path || "");
-}
-
-function getBatchJobCoverUrl(jobId) {
-  return assetUrl(getJobById(jobId)?.result?.cover_path || "");
-}
-
-function formatShotAnchorOverridesDisplay(anchorStrategy, characterIds = []) {
-  return formatShotAnchorOverridesDisplayWithCharacters(anchorStrategy, characterIds, state.characters);
-}
-
-function getAutoReferenceSummary(characterIds, sceneId) {
-  return getAutoReferenceSummaryWithAssets(characterIds, sceneId, state.characters, state.scenes);
-}
-
-function formatSceneLabel(sceneId) {
-  return formatSceneLabelWithScenes(sceneId, state.scenes);
+  return {
+    episode_id: String(selectedEpisode.value?.id || state.selectedEpisodeId || "").trim(),
+    scene_id: sceneId,
+    characters: [...state.selectedCharacterIds],
+    media: buildShotMediaPayload(forms),
+    visual
+  };
 }
 
 async function handleShotMediaUpload(source, target, event) {
@@ -996,522 +680,6 @@ async function handleShotMediaUpload(source, target, event) {
     }
   }
 }
-
-function isEditingParsedShot(sceneIndex, shotIndex) {
-  return parsedShotEditing.sceneIndex === sceneIndex && parsedShotEditing.shotIndex === shotIndex;
-}
-
-function isEditingParsedScene(sceneIndex) {
-  return parsedSceneEditing.sceneIndex === sceneIndex;
-}
-
-function startParsedSceneEdit(scene, sceneIndex) {
-  parsedSceneEditing.sceneIndex = sceneIndex;
-  parsedSceneEditing.location = String(scene?.location || "").trim();
-  parsedSceneEditing.time = String(scene?.time || "").trim();
-  parsedSceneEditing.summary = String(scene?.summary || "").trim();
-}
-
-function cancelParsedSceneEdit() {
-  parsedSceneEditing.sceneIndex = -1;
-  parsedSceneEditing.location = "";
-  parsedSceneEditing.time = "";
-  parsedSceneEditing.summary = "";
-}
-
-function saveParsedSceneEdit(sceneIndex) {
-  if (!parsedScriptObject.value) {
-    setError("当前解析 JSON 无法编辑，请先修复结构。");
-    return;
-  }
-
-  try {
-    const parsed = JSON.parse(state.parsedScriptText || "{}");
-    const targetScene = Array.isArray(parsed?.scenes) ? parsed.scenes[sceneIndex] : null;
-    if (!targetScene) {
-      throw new Error("未找到要修改的场景。");
-    }
-
-    targetScene.location = String(parsedSceneEditing.location || "").trim();
-    targetScene.time = String(parsedSceneEditing.time || "").trim();
-    targetScene.summary = String(parsedSceneEditing.summary || "").trim();
-
-    const readable = {
-      ...((targetScene.readable && typeof targetScene.readable === "object") ? targetScene.readable : {})
-    };
-    readable["场景地点"] = targetScene.location;
-    readable["时间"] = targetScene.time;
-    readable["场景摘要"] = targetScene.summary;
-    readable["镜头数"] = Array.isArray(targetScene.shots) ? targetScene.shots.length : 0;
-    targetScene.readable = readable;
-
-    if (parsed.extracted_entities && Array.isArray(parsed.extracted_entities.scenes)) {
-      parsed.extracted_entities.scenes = [...new Set(
-        (parsed.scenes || [])
-          .map((scene) => String(scene?.location || "").trim())
-          .filter(Boolean)
-      )];
-    }
-
-    state.parsedScriptText = JSON.stringify(parsed, null, 2);
-    cancelParsedSceneEdit();
-    setNotice(`场景 ${sceneIndex + 1} 已更新到解析 JSON，请记得点击“保存 JSON”。`);
-  } catch (error) {
-    setError(error);
-  }
-}
-
-function startParsedShotEdit(scene, shot, sceneIndex, shotIndex) {
-  parsedShotEditing.sceneIndex = sceneIndex;
-  parsedShotEditing.shotIndex = shotIndex;
-  parsedShotEditing.description = String(shot?.description || "").trim();
-  parsedShotEditing.cameraAngle = String(shot?.camera?.angle || "").trim();
-  parsedShotEditing.cameraMovement = String(shot?.camera?.movement || "").trim();
-  parsedShotEditing.cameraShotSize = String(shot?.camera?.shot_size || "").trim();
-  parsedShotEditing.charactersText = serializeCharacterEntries(shot?.characters || []);
-  parsedShotEditing.dialoguesText = serializeDialogueEntries(getParsedShotDialogueEntries(shot));
-  parsedShotEditing.emotion = String(shot?.emotion || "").trim();
-  parsedShotEditing.beat = String(shot?.beat || "").trim();
-}
-
-function cancelParsedShotEdit() {
-  parsedShotEditing.sceneIndex = -1;
-  parsedShotEditing.shotIndex = -1;
-  parsedShotEditing.description = "";
-  parsedShotEditing.cameraAngle = "";
-  parsedShotEditing.cameraMovement = "";
-  parsedShotEditing.cameraShotSize = "";
-  parsedShotEditing.charactersText = "";
-  parsedShotEditing.dialoguesText = "";
-  parsedShotEditing.emotion = "";
-  parsedShotEditing.beat = "";
-}
-
-function saveParsedShotEdit(sceneIndex, shotIndex) {
-  if (!parsedScriptObject.value) {
-    setError("当前解析 JSON 无法编辑，请先修复结构。");
-    return;
-  }
-
-  try {
-    const parsed = JSON.parse(state.parsedScriptText || "{}");
-    const targetScene = Array.isArray(parsed?.scenes) ? parsed.scenes[sceneIndex] : null;
-    const targetShot = Array.isArray(targetScene?.shots) ? targetScene.shots[shotIndex] : null;
-    if (!targetScene || !targetShot) {
-      throw new Error("未找到要修改的分镜。");
-    }
-
-    const nextDialogues = parseDialogueText(parsedShotEditing.dialoguesText);
-    const nextCharacters = parseCharacterText(parsedShotEditing.charactersText);
-    const nextCamera = {
-      ...(targetShot.camera || {}),
-      angle: String(parsedShotEditing.cameraAngle || "").trim(),
-      movement: String(parsedShotEditing.cameraMovement || "").trim(),
-      shot_size: String(parsedShotEditing.cameraShotSize || "").trim(),
-      summary: ""
-    };
-
-    targetShot.description = String(parsedShotEditing.description || "").trim();
-    targetShot.camera = nextCamera;
-    targetShot.dialogues = nextDialogues;
-    targetShot.characters = nextCharacters;
-    targetShot.emotion = String(parsedShotEditing.emotion || "").trim();
-    targetShot.beat = String(parsedShotEditing.beat || "").trim();
-
-    const readable = {
-      ...((targetShot.readable && typeof targetShot.readable === "object") ? targetShot.readable : {})
-    };
-    readable["画面描述"] = targetShot.description;
-    readable["镜头信息"] = buildParsedCameraSummary(nextCamera);
-    readable["出场角色"] = serializeCharacterEntries(nextCharacters);
-    readable["对白"] = formatDialogueEntries(nextDialogues);
-    readable["情绪"] = targetShot.emotion;
-    readable["剧情节拍"] = targetShot.beat;
-    targetShot.readable = readable;
-
-    targetShot.camera.summary = buildParsedCameraSummary(nextCamera);
-
-    state.parsedScriptText = JSON.stringify(parsed, null, 2);
-    cancelParsedShotEdit();
-    setNotice(`镜头 ${shotIndex + 1} 已更新到解析 JSON，请记得点击“保存 JSON”。`);
-  } catch (error) {
-    setError(error);
-  }
-}
-
-function buildParsedShotStoryPayload(shot) {
-  const readableShot = getReadableShotInfo(shot);
-  const description = firstNonEmptyText(readableShot["画面描述"], shot?.description);
-  const emotion = firstNonEmptyText(readableShot["情绪"], shot?.emotion);
-  const beat = firstNonEmptyText(readableShot["剧情节拍"], shot?.beat);
-  const dialogueLines = normalizeDialogueEntries(getParsedShotDialogueEntries(shot))
-    .map((item) => (item.character && item.text ? `${item.character}: ${item.text}` : item.text))
-    .filter(Boolean);
-  const rawScriptExcerpt = [description, ...dialogueLines].filter(Boolean).join("\n");
-
-  return {
-    description,
-    emotion,
-    beat,
-    raw_script_excerpt: rawScriptExcerpt
-  };
-}
-
-function getShotStoryValue(shot, fieldName) {
-  return String(shot?.story?.[fieldName] || "").trim();
-}
-
-function getShotStoryDisplay(shot, fieldName, fallback = "暂无") {
-  const storyValue = getShotStoryValue(shot, fieldName);
-  if (storyValue) {
-    return storyValue;
-  }
-  const scriptContext = shot?.prompt_package?.script_context || {};
-  const scriptFieldMap = {
-    description: "shot_description",
-    emotion: "shot_emotion",
-    beat: "shot_beat",
-    raw_script_excerpt: "raw_script_excerpt"
-  };
-  const scriptValue = String(scriptContext[scriptFieldMap[fieldName]] || "").trim();
-  return scriptValue || fallback;
-}
-
-async function copyTextToClipboard(text) {
-  const content = String(text || "").trim();
-  if (!content) {
-    throw new Error("没有可复制的内容");
-  }
-  if (navigator?.clipboard?.writeText) {
-    await navigator.clipboard.writeText(content);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = content;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  document.body.removeChild(textarea);
-}
-
-async function handleCopyReadableShot(scene, shot, sceneIndex, shotIndex) {
-  try {
-    await copyTextToClipboard(buildParsedShotDescription(scene, shot, sceneIndex, shotIndex));
-    setNotice(`镜头 ${shotIndex + 1} 的分镜描述已复制`);
-  } catch (error) {
-    setError(error);
-  }
-}
-
-function resolveParsedSceneId(scene) {
-  const readableScene = getReadableSceneInfo(scene);
-  const candidates = [
-    readableScene["场景地点"],
-    scene?.location,
-    readableScene["场景摘要"],
-    scene?.summary
-  ]
-    .map((item) => String(item || "").trim())
-    .filter(Boolean);
-  const normalizedCandidates = candidates.map((item) => normalizeMatchText(item)).filter(Boolean);
-
-  if (!normalizedCandidates.length) {
-    return state.selectedSceneId || state.scenes[0]?.id || "";
-  }
-
-  const exactMatch = state.scenes.find((item) => {
-    const normalizedName = normalizeMatchText(item?.name);
-    return normalizedName && normalizedCandidates.includes(normalizedName);
-  });
-  if (exactMatch) {
-    return exactMatch.id;
-  }
-
-  const partialMatch = state.scenes.find((item) => {
-    const normalizedName = normalizeMatchText(item?.name);
-    return (
-      normalizedName &&
-      normalizedCandidates.some((candidate) => candidate.includes(normalizedName) || normalizedName.includes(candidate))
-    );
-  });
-  if (partialMatch) {
-    return partialMatch.id;
-  }
-
-  return state.selectedSceneId || (state.scenes.length === 1 ? state.scenes[0].id : "");
-}
-
-function resolveParsedCharacterIds(shot) {
-  const sourceNames = [
-    ...(Array.isArray(shot?.characters) ? shot.characters : []),
-    ...getParsedShotDialogueEntries(shot).map((item) => item.character)
-  ]
-    .map((item) => String(item || "").trim())
-    .filter(Boolean);
-  const uniqueNames = [...new Set(sourceNames)];
-  const matchedIds = [];
-  const unmatchedNames = [];
-
-  uniqueNames.forEach((name) => {
-    const normalizedName = normalizeMatchText(name);
-    const matchedCharacter = state.characters.find((item) => normalizeMatchText(item?.name) === normalizedName);
-    if (matchedCharacter) {
-      matchedIds.push(matchedCharacter.id);
-    } else {
-      unmatchedNames.push(name);
-    }
-  });
-
-  return {
-    matchedIds: [...new Set(matchedIds)],
-    unmatchedNames
-  };
-}
-
-function mapParsedShotSize(value) {
-  const text = String(value || "").trim();
-  if (!text) {
-    return forms.shotSize;
-  }
-  if (text.includes("特写")) {
-    return "extreme_closeup";
-  }
-  if (text.includes("近景")) {
-    return "closeup";
-  }
-  if (text.includes("中")) {
-    return "medium";
-  }
-  if (text.includes("全景") || text.includes("远景")) {
-    return "wide";
-  }
-  return forms.shotSize;
-}
-
-function mapParsedShotMovement(value) {
-  const text = String(value || "").trim();
-  if (!text) {
-    return forms.shotMovement;
-  }
-  if (text.includes("推")) {
-    return "push_in";
-  }
-  if (text.includes("拉")) {
-    return "pull_out";
-  }
-  if (text.includes("摇")) {
-    return "pan";
-  }
-  if (text.includes("跟")) {
-    return "tracking";
-  }
-  if (text.includes("固定") || text.includes("静")) {
-    return "static";
-  }
-  return forms.shotMovement;
-}
-
-function mapParsedCameraAngle(value) {
-  const text = String(value || "").trim();
-  if (!text) {
-    return "eye_level";
-  }
-  if (text.includes("顶")) {
-    return "top_down";
-  }
-  if (text.includes("俯")) {
-    return "high_angle";
-  }
-  if (text.includes("仰")) {
-    return "low_angle";
-  }
-  return "eye_level";
-}
-
-function buildImportedShotMedia() {
-  return {
-    mode: normalizeShotInputMode(forms.shotInputMode),
-    generate_audio: Boolean(forms.shotGenerateAudio),
-    first_frame_path: "",
-    last_frame_path: "",
-    reference_image_paths: []
-  };
-}
-
-function getSceneDirectSceneId() {
-  return String(forms.shotSceneId || state.selectedSceneId || "").trim();
-}
-
-function buildSceneDirectPayload() {
-  return {
-    characters: [...state.selectedCharacterIds],
-    media: buildShotMediaPayload(forms),
-    visual: {
-      aspect_ratio: forms.shotAspectRatio,
-      style: "cinematic realism",
-      resolution: forms.shotResolution,
-      generation_count: normalizeShotGenerationCount(forms.shotGenerationCount),
-      shot_size: forms.shotSize,
-      camera_angle: "eye_level",
-      camera_movement: forms.shotMovement,
-      lens: "50mm",
-      depth_of_field: "medium",
-      lighting: forms.shotLighting.trim(),
-      palette: forms.shotPalette.trim(),
-      duration_seconds: normalizeShotDuration(forms.shotDuration)
-    }
-  };
-}
-
-async function handleImportReadableShot(scene, shot, sceneIndex, shotIndex) {
-  if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
-    setError("请先选择一个分镜板，再导入镜头卡草稿");
-    return;
-  }
-
-  loading.importParsedShot = true;
-  try {
-    const result = await importReadableShotDraft(scene, shot, sceneIndex, shotIndex);
-    await loadProductionData(state.selectedSeriesSlug);
-    await loadShotsForStoryboard(state.selectedSeriesSlug, state.selectedStoryboardId, result.item.id);
-    state.selectedSceneId = result.sceneId;
-    state.selectedShotId = result.item.id;
-    setNotice(
-      `已导入镜头卡草稿：${result.item.id}${result.unmatchedNames.length ? `，未匹配角色：${result.unmatchedNames.join("、")}` : ""}`
-    );
-  } catch (error) {
-    setError(error);
-  } finally {
-    loading.importParsedShot = false;
-  }
-}
-
-async function importReadableShotDraft(scene, shot, sceneIndex, shotIndex) {
-  const sceneId = resolveParsedSceneId(scene);
-  if (!sceneId) {
-    throw new Error("未匹配到可用场景，请先创建或选择对应场景");
-  }
-
-  const { matchedIds, unmatchedNames } = resolveParsedCharacterIds(shot);
-  const dialogues = getParsedShotDialogueEntries(shot);
-  const story = buildParsedShotStoryPayload(shot);
-  const shotCamera = shot?.camera || {};
-  const episodeId = String(
-    parsedScriptObject.value?.episode_id || selectedStoryboard.value?.episode_id || state.selectedEpisodeId || ""
-  ).trim();
-
-  const response = await createShot(state.selectedSeriesSlug, state.selectedStoryboardId, {
-    scene_id: sceneId,
-    shot_payload: {
-      characters: matchedIds,
-      script_source: {
-        episode_id: episodeId,
-        scene_index: sceneIndex + 1,
-        shot_index: shotIndex + 1
-      },
-      story,
-      dialogue: dialogues,
-      media: buildImportedShotMedia(),
-      visual: {
-        aspect_ratio: forms.shotAspectRatio,
-        style: "cinematic realism",
-        resolution: forms.shotResolution,
-        generation_count: normalizeShotGenerationCount(forms.shotGenerationCount),
-        shot_size: mapParsedShotSize(shotCamera.shot_size),
-        camera_angle: mapParsedCameraAngle(shotCamera.angle),
-        camera_movement: mapParsedShotMovement(shotCamera.movement),
-        lens: "50mm",
-        depth_of_field: "medium",
-        lighting: forms.shotLighting.trim(),
-        palette: forms.shotPalette.trim(),
-        duration_seconds: normalizeShotDuration(forms.shotDuration)
-      },
-      status: "draft"
-    }
-  });
-
-  return {
-    item: response.item,
-    sceneId,
-    unmatchedNames
-  };
-}
-
-async function handleImportAllReadableShots() {
-  if (!state.selectedSeriesSlug || !state.selectedStoryboardId) {
-    setError("请先选择一个分镜板，再导入镜头卡草稿");
-    return;
-  }
-
-  const shotEntries = [];
-  for (const [sceneIndex, scene] of (parsedScriptReadableScenes.value || []).entries()) {
-    for (const [shotIndex, shot] of (scene?.shots || []).entries()) {
-      shotEntries.push({ scene, shot, sceneIndex, shotIndex });
-    }
-  }
-
-  if (!shotEntries.length) {
-    setError("当前可读视图里没有可导入的镜头");
-    return;
-  }
-
-  loading.importParsedShot = true;
-  try {
-    const importedIds = [];
-    const unmatchedNotes = [];
-    const failedNotes = [];
-    let lastSceneId = "";
-
-    for (const entry of shotEntries) {
-      try {
-        const result = await importReadableShotDraft(entry.scene, entry.shot, entry.sceneIndex, entry.shotIndex);
-        importedIds.push(result.item.id);
-        lastSceneId = result.sceneId || lastSceneId;
-        if (result.unmatchedNames.length) {
-          unmatchedNotes.push(`镜头${entry.shotIndex + 1} 未匹配角色：${result.unmatchedNames.join("、")}`);
-        }
-      } catch (error) {
-        failedNotes.push(
-          `场景${entry.sceneIndex + 1}/镜头${entry.shotIndex + 1}：${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    }
-
-    if (!importedIds.length) {
-      throw new Error(failedNotes.join("；") || "全部导入失败");
-    }
-
-    await loadProductionData(state.selectedSeriesSlug);
-    await loadShotsForStoryboard(
-      state.selectedSeriesSlug,
-      state.selectedStoryboardId,
-      importedIds[importedIds.length - 1]
-    );
-    if (lastSceneId) {
-      state.selectedSceneId = lastSceneId;
-    }
-    state.selectedShotId = importedIds[importedIds.length - 1];
-
-    const noticeParts = [`已批量导入 ${importedIds.length} 个镜头卡草稿`];
-    if (failedNotes.length) {
-      noticeParts.push(`失败 ${failedNotes.length} 个`);
-    }
-    if (unmatchedNotes.length) {
-      noticeParts.push(unmatchedNotes.slice(0, 2).join("；"));
-    }
-    setNotice(noticeParts.join("，"));
-    state.error = failedNotes.join("\n");
-  } catch (error) {
-    setError(error);
-  } finally {
-    loading.importParsedShot = false;
-  }
-}
-
 async function loadHealth() {
   try {
     const data = await getHealth();
@@ -1694,6 +862,44 @@ async function loadShotsForStoryboard(seriesSlug, storyboardId, preferredShotId 
     }
   }
 }
+
+const parsedScriptEditor = useParsedScriptEditor({
+  state,
+  forms,
+  loading,
+  parsedShotEditing,
+  parsedSceneEditing,
+  parsedScriptObject,
+  selectedStoryboard,
+  createShot,
+  loadProductionData,
+  loadShotsForStoryboard,
+  setNotice,
+  setError
+});
+
+const {
+  isEditingParsedShot,
+  isEditingParsedScene,
+  startParsedSceneEdit,
+  cancelParsedSceneEdit,
+  saveParsedSceneEdit,
+  startParsedShotEdit,
+  cancelParsedShotEdit,
+  saveParsedShotEdit,
+  buildParsedShotStoryPayload,
+  handleCopyReadableShot,
+  getShotStoryValue,
+  getShotStoryDisplay,
+  resolveParsedSceneId,
+  resolveParsedCharacterIds,
+  mapParsedShotSize,
+  mapParsedShotMovement,
+  mapParsedCameraAngle,
+  buildImportedShotMedia,
+  handleImportReadableShot,
+  handleImportAllReadableShots
+} = parsedScriptEditor;
 
 async function loadShotBatchesForStoryboard(seriesSlug, storyboardId, preferredBatchId = "") {
   const requestId = ++shotBatchRequestSeed;
@@ -3634,60 +2840,7 @@ provideWorkspaceContext({
   parsedShotEditing,
   parsedSceneEditing,
   state,
-  selectedSeries,
-  selectedEpisode,
-  selectedCharacter,
-  selectedScene,
-  filteredStoryboards,
-  selectedStoryboard,
-  selectedStoryboardProductionMode,
-  selectedSceneDirectPackage,
-  selectedShot,
-  selectedShotBatchComputed,
-  seriesListPanelLoading,
-  seriesCreatePanelLoading,
-  episodesPanelLoading,
-  rawScriptPanelLoading,
-  parsedScriptPanelLoading,
-  characterCreatePanelLoading,
-  sceneCreatePanelLoading,
-  characterLabPanelLoading,
-  sceneLabPanelLoading,
-  storyboardConfigPanelLoading,
-  executionPanelLoading,
-  storyboardListLoading,
-  storyboardDetailLoading,
-  jobsListLoading,
-  shotBatchesListLoading,
-  remoteTasksListLoading,
-  snapshotsListLoading,
-  jobDetailSectionLoading,
-  snapshotDetailSectionLoading,
-  selectedJobComputed,
-  selectedRemoteTaskComputed,
-  selectedShotPromptPackage,
-  selectedShotPromptVariants,
-  selectedShotPromptVariant,
-  selectedShotPromptPreview,
-  parsedScriptObject,
-  parsedScriptReadableOutline,
-  parsedScriptReadableScenes,
-  selectedJobRequestBody,
-  selectedJobRequestSummary,
-  selectedJobHasSubmittedRequest,
-  selectedJobRequestText,
-  selectedJobResponseText,
-  selectedJobVideoUrl,
-  selectedJobCoverUrl,
-  selectedRemoteTaskText,
-  selectedRemoteTaskVideoUrl,
-  selectedRemoteTaskCoverUrl,
-  selectedSnapshotImageCount,
-  selectedCharacterImageEntries,
-  selectedCharacterSourceEntries,
-  hasUploadedCharacterSourceImages,
-  selectedCharacterAnchorEntries,
-  selectedSceneImageEntries,
+  ...workspaceDerived,
   shotAnchorModeOptions,
   shotAspectRatioOptions,
   shotGenerationCountOptions,
@@ -3700,34 +2853,10 @@ provideWorkspaceContext({
   setError,
   assetUrl,
   singlePreviewList,
-  isEditingSeries,
-  isEditingEpisode,
-  isEditingCharacter,
-  isEditingScene,
-  isEditingShot,
-  startSeriesEdit,
-  cancelSeriesEdit,
-  startEpisodeEdit,
-  cancelEpisodeEdit,
-  startCharacterEdit,
-  cancelCharacterEdit,
-  startSceneEdit,
-  cancelSceneEdit,
-  startShotEdit,
-  cancelShotEdit,
-  getRemoteTaskId,
-  getRemoteTaskLinkedJob,
-  getRemoteTaskStatus,
-  isShotSelectedForBatch,
-  toggleShotSelection,
-  selectAllShotsForBatch,
-  clearShotSelection,
+  ...workspaceEditing,
+  ...workspaceLocalHelpers,
   formatShotBatchCounts,
   formatShotBatchProgress,
-  getShotBatchSubmittableCount,
-  getBatchCompletedItems,
-  getBatchJobVideoUrl,
-  getBatchJobCoverUrl,
   formatHealth,
   formatStatus,
   formatAnchorKey,
@@ -3741,7 +2870,6 @@ provideWorkspaceContext({
   getShotAnchorOverrideValue,
   setShotAnchorOverrideValue,
   countShotAnchorOverrides,
-  formatShotAnchorOverridesDisplay,
   normalizeStoryboardProductionMode,
   formatStoryboardProductionMode,
   formatSnapshotSource,
@@ -3755,14 +2883,12 @@ provideWorkspaceContext({
   isTextOnlyMode,
   normalizeShotDuration,
   normalizeShotGenerationCount,
-  getAutoReferenceSummary,
   applyShotModeRules,
   validateShotSource,
   getShotMediaEntries,
   removeShotMediaEntry,
   handleShotMediaUpload,
   buildShotMediaPayload,
-  formatSceneLabel,
   formatShotKeyword,
   formatPromptGenerationMode,
   formatPromptVariantLabel,
@@ -3792,28 +2918,9 @@ provideWorkspaceContext({
   serializeCharacterEntries,
   parseCharacterText,
   buildParsedCameraSummary,
-  isEditingParsedShot,
-  isEditingParsedScene,
-  startParsedSceneEdit,
-  cancelParsedSceneEdit,
-  saveParsedSceneEdit,
-  startParsedShotEdit,
-  cancelParsedShotEdit,
-  saveParsedShotEdit,
-  handleCopyReadableShot,
-  buildParsedShotStoryPayload,
-  getShotStoryValue,
-  getShotStoryDisplay,
-  resolveParsedSceneId,
-  resolveParsedCharacterIds,
-  mapParsedShotSize,
-  mapParsedShotMovement,
-  mapParsedCameraAngle,
-  buildImportedShotMedia,
+  ...parsedScriptEditor,
   getSceneDirectSceneId,
   buildSceneDirectPayload,
-  handleImportReadableShot,
-  handleImportAllReadableShots,
   handleCreateSeries,
   handleUpdateSeries,
   handleDeleteSeries,
