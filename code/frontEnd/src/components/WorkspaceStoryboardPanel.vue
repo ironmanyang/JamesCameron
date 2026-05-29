@@ -12,6 +12,7 @@
               {{ loading.createStoryboard ? "创建中..." : "新建分镜板" }}
             </el-button>
           </div>
+          <p class="inline-note action-hint">{{ loading.createStoryboard ? "分镜板正在创建中..." : "先创建或选中一个分镜板，再配置镜头。" }}</p>
 
           <div class="mini-list compact-card-grid compact-card-grid-3">
             <div v-for="item in filteredStoryboards" :key="item.id" class="mini-card selectable"
@@ -239,6 +240,7 @@
                   @click="handleCreateShot">
                   {{ loading.createShot ? "创建中..." : "生成镜头卡" }}
                 </el-button>
+                <p class="inline-note action-hint">{{ getDisabledHint("createShot") || "当前表单会生成一张新的镜头卡。" }}</p>
               </div>
             </div>
 

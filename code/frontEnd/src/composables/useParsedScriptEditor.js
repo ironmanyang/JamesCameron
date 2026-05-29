@@ -1,7 +1,6 @@
 import {
   buildParsedCameraSummary,
   buildParsedShotDescription,
-  buildShotMediaPayload,
   firstNonEmptyText,
   formatDialogueEntries,
   getParsedShotDialogueEntries,
@@ -29,6 +28,7 @@ export function useParsedScriptEditor({
   createShot,
   loadProductionData,
   loadShotsForStoryboard,
+  confirmDanger,
   setNotice,
   setError
 }) {
@@ -38,6 +38,144 @@ export function useParsedScriptEditor({
 
   function isEditingParsedScene(sceneIndex) {
     return parsedSceneEditing.sceneIndex === sceneIndex;
+  }
+
+  function parseParsedScriptText() {
+    const parsed = JSON.parse(state.parsedScriptText || "{}");
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("当前解析 JSON 无法编辑，请先修复结构。");
+    }
+    if (!Array.isArray(parsed.scenes)) {
+      parsed.scenes = [];
+    }
+    if (!parsed.extracted_entities || typeof parsed.extracted_entities !== "object") {
+      parsed.extracted_entities = {
+        characters: [],
+        scenes: [],
+        props: []
+      };
+    }
+    if (!Array.isArray(parsed.extracted_entities.characters)) {
+      parsed.extracted_entities.characters = [];
+    }
+    if (!Array.isArray(parsed.extracted_entities.scenes)) {
+      parsed.extracted_entities.scenes = [];
+    }
+    if (!Array.isArray(parsed.extracted_entities.props)) {
+      parsed.extracted_entities.props = [];
+    }
+    return parsed;
+  }
+
+  function syncSceneReadable(scene, sceneIndex) {
+    const readable = {
+      ...((scene.readable && typeof scene.readable === "object") ? scene.readable : {})
+    };
+    readable["场景编号"] = scene.scene_id ?? sceneIndex + 1;
+    readable["场景地点"] = String(scene.location || "").trim();
+    readable["时间"] = String(scene.time || "").trim();
+    readable["场景摘要"] = String(scene.summary || "").trim();
+    readable["镜头数"] = Array.isArray(scene.shots) ? scene.shots.length : 0;
+    scene.readable = readable;
+  }
+
+  function syncShotReadable(shot, shotIndex) {
+    if (!shot.camera || typeof shot.camera !== "object") {
+      shot.camera = {};
+    }
+    const cameraSummary = buildParsedCameraSummary(shot.camera);
+    const readable = {
+      ...((shot.readable && typeof shot.readable === "object") ? shot.readable : {})
+    };
+    readable["镜头编号"] = shot.shot_id ?? shotIndex + 1;
+    readable["画面描述"] = String(shot.description || "").trim();
+    readable["镜头信息"] = cameraSummary;
+    readable["出场角色"] = serializeCharacterEntries(shot.characters || []);
+    readable["对白"] = formatDialogueEntries(shot.dialogues || []);
+    readable["情绪"] = String(shot.emotion || "").trim();
+    readable["剧情节拍"] = String(shot.beat || "").trim();
+    shot.camera.summary = cameraSummary;
+    shot.readable = readable;
+  }
+
+  function resyncParsedScript(parsed) {
+    const sceneNames = [];
+    const characterNames = new Set();
+
+    parsed.scenes.forEach((scene, sceneIndex) => {
+      if (!scene || typeof scene !== "object") {
+        return;
+      }
+
+      if (!Array.isArray(scene.shots)) {
+        scene.shots = [];
+      }
+
+      scene.scene_id = sceneIndex + 1;
+      scene.shots.forEach((shot, shotIndex) => {
+        if (!shot || typeof shot !== "object") {
+          return;
+        }
+        shot.shot_id = shotIndex + 1;
+        syncShotReadable(shot, shotIndex);
+
+        (Array.isArray(shot.characters) ? shot.characters : [])
+          .map((item) => String(item || "").trim())
+          .filter(Boolean)
+          .forEach((name) => characterNames.add(name));
+      });
+
+      syncSceneReadable(scene, sceneIndex);
+      const sceneLocation = String(scene.location || "").trim();
+      if (sceneLocation) {
+        sceneNames.push(sceneLocation);
+      }
+    });
+
+    parsed.extracted_entities.scenes = [...new Set(sceneNames)];
+    parsed.extracted_entities.characters = [...new Set(characterNames)];
+
+    if (parsed.readable_outline && typeof parsed.readable_outline === "object") {
+      parsed.readable_outline["剧集标题"] = String(
+        parsed.title || parsed.readable_outline["剧集标题"] || ""
+      ).trim();
+      parsed.readable_outline["场景总数"] = parsed.scenes.length;
+      parsed.readable_outline["角色总览"] = parsed.extracted_entities.characters;
+    }
+
+    return parsed;
+  }
+
+  function writeParsedScript(parsed) {
+    state.parsedScriptText = JSON.stringify(resyncParsedScript(parsed), null, 2);
+  }
+
+  function buildParsedShotDraft(sceneIndex, shotIndex) {
+    const shotNumber = shotIndex + 1;
+    return {
+      shot_id: shotNumber,
+      description: "",
+      camera: {
+        angle: "",
+        movement: "",
+        shot_size: "",
+        summary: ""
+      },
+      dialogues: [],
+      characters: [],
+      emotion: "",
+      beat: "",
+      readable: {
+        "镜头编号": shotNumber,
+        "画面描述": "",
+        "镜头信息": "",
+        "出场角色": "",
+        "对白": "",
+        "情绪": "",
+        "剧情节拍": ""
+      },
+      scene_id: sceneIndex + 1
+    };
   }
 
   function startParsedSceneEdit(scene, sceneIndex) {
@@ -61,8 +199,8 @@ export function useParsedScriptEditor({
     }
 
     try {
-      const parsed = JSON.parse(state.parsedScriptText || "{}");
-      const targetScene = Array.isArray(parsed?.scenes) ? parsed.scenes[sceneIndex] : null;
+      const parsed = parseParsedScriptText();
+      const targetScene = parsed.scenes[sceneIndex];
       if (!targetScene) {
         throw new Error("未找到要修改的场景。");
       }
@@ -71,28 +209,9 @@ export function useParsedScriptEditor({
       targetScene.time = String(parsedSceneEditing.time || "").trim();
       targetScene.summary = String(parsedSceneEditing.summary || "").trim();
 
-      const readable = {
-        ...((targetScene.readable && typeof targetScene.readable === "object") ? targetScene.readable : {})
-      };
-      readable["场景地点"] = targetScene.location;
-      readable["时间"] = targetScene.time;
-      readable["场景摘要"] = targetScene.summary;
-      readable["镜头数"] = Array.isArray(targetScene.shots) ? targetScene.shots.length : 0;
-      targetScene.readable = readable;
-
-      if (parsed.extracted_entities && Array.isArray(parsed.extracted_entities.scenes)) {
-        parsed.extracted_entities.scenes = [
-          ...new Set(
-            (parsed.scenes || [])
-              .map((sceneItem) => String(sceneItem?.location || "").trim())
-              .filter(Boolean)
-          )
-        ];
-      }
-
-      state.parsedScriptText = JSON.stringify(parsed, null, 2);
+      writeParsedScript(parsed);
       cancelParsedSceneEdit();
-      setNotice(`场景 ${sceneIndex + 1} 已更新到解析 JSON，请记得点击“保存 JSON”。`);
+      setNotice(`场景 ${sceneIndex + 1} 已同步回写到解析 JSON。`);
     } catch (error) {
       setError(error);
     }
@@ -131,46 +250,127 @@ export function useParsedScriptEditor({
     }
 
     try {
-      const parsed = JSON.parse(state.parsedScriptText || "{}");
-      const targetScene = Array.isArray(parsed?.scenes) ? parsed.scenes[sceneIndex] : null;
+      const parsed = parseParsedScriptText();
+      const targetScene = parsed.scenes[sceneIndex];
       const targetShot = Array.isArray(targetScene?.shots) ? targetScene.shots[shotIndex] : null;
       if (!targetScene || !targetShot) {
-        throw new Error("未找到要修改的分镜。");
+        throw new Error("未找到要修改的镜头。");
       }
 
-      const nextDialogues = parseDialogueText(parsedShotEditing.dialoguesText);
-      const nextCharacters = parseCharacterText(parsedShotEditing.charactersText);
-      const nextCamera = {
+      targetShot.description = String(parsedShotEditing.description || "").trim();
+      targetShot.camera = {
         ...(targetShot.camera || {}),
         angle: String(parsedShotEditing.cameraAngle || "").trim(),
         movement: String(parsedShotEditing.cameraMovement || "").trim(),
         shot_size: String(parsedShotEditing.cameraShotSize || "").trim(),
         summary: ""
       };
-
-      targetShot.description = String(parsedShotEditing.description || "").trim();
-      targetShot.camera = nextCamera;
-      targetShot.dialogues = nextDialogues;
-      targetShot.characters = nextCharacters;
+      targetShot.dialogues = parseDialogueText(parsedShotEditing.dialoguesText);
+      targetShot.characters = parseCharacterText(parsedShotEditing.charactersText);
       targetShot.emotion = String(parsedShotEditing.emotion || "").trim();
       targetShot.beat = String(parsedShotEditing.beat || "").trim();
 
-      const readable = {
-        ...((targetShot.readable && typeof targetShot.readable === "object") ? targetShot.readable : {})
-      };
-      readable["画面描述"] = targetShot.description;
-      readable["镜头信息"] = buildParsedCameraSummary(nextCamera);
-      readable["出场角色"] = serializeCharacterEntries(nextCharacters);
-      readable["对白"] = formatDialogueEntries(nextDialogues);
-      readable["情绪"] = targetShot.emotion;
-      readable["剧情节拍"] = targetShot.beat;
-      targetShot.readable = readable;
-
-      targetShot.camera.summary = buildParsedCameraSummary(nextCamera);
-
-      state.parsedScriptText = JSON.stringify(parsed, null, 2);
+      writeParsedScript(parsed);
       cancelParsedShotEdit();
-      setNotice(`镜头 ${shotIndex + 1} 已更新到解析 JSON，请记得点击“保存 JSON”。`);
+      setNotice(`镜头 ${shotIndex + 1} 已同步回写到解析 JSON。`);
+    } catch (error) {
+      setError(error);
+    }
+  }
+
+  function handleAddParsedShot(sceneIndex) {
+    if (!parsedScriptObject.value) {
+      setError("当前解析 JSON 无法编辑，请先修复结构。");
+      return;
+    }
+
+    try {
+      const parsed = parseParsedScriptText();
+      const targetScene = parsed.scenes[sceneIndex];
+      if (!targetScene) {
+        throw new Error("未找到要新增镜头的场景。");
+      }
+      if (!Array.isArray(targetScene.shots)) {
+        targetScene.shots = [];
+      }
+
+      const newShotIndex = targetScene.shots.length;
+      targetScene.shots.push(buildParsedShotDraft(sceneIndex, newShotIndex));
+
+      writeParsedScript(parsed);
+      startParsedShotEdit(targetScene, targetScene.shots[newShotIndex], sceneIndex, newShotIndex);
+      setNotice(`已新增镜头 ${newShotIndex + 1}，请继续编辑。`);
+    } catch (error) {
+      setError(error);
+    }
+  }
+
+  function handleMoveParsedShot(sceneIndex, shotIndex, direction) {
+    if (!parsedScriptObject.value) {
+      setError("当前解析 JSON 无法编辑，请先修复结构。");
+      return;
+    }
+
+    try {
+      const parsed = parseParsedScriptText();
+      const targetScene = parsed.scenes[sceneIndex];
+      if (!targetScene || !Array.isArray(targetScene.shots)) {
+        throw new Error("未找到要排序的场景或镜头。");
+      }
+
+      const targetIndex = shotIndex + direction;
+      if (targetIndex < 0 || targetIndex >= targetScene.shots.length) {
+        return;
+      }
+
+      [targetScene.shots[shotIndex], targetScene.shots[targetIndex]] = [
+        targetScene.shots[targetIndex],
+        targetScene.shots[shotIndex]
+      ];
+
+      writeParsedScript(parsed);
+
+      if (isEditingParsedShot(sceneIndex, shotIndex)) {
+        parsedShotEditing.shotIndex = targetIndex;
+      } else if (isEditingParsedShot(sceneIndex, targetIndex)) {
+        parsedShotEditing.shotIndex = shotIndex;
+      }
+
+      setNotice(`镜头已${direction < 0 ? "上移" : "下移"}。`);
+    } catch (error) {
+      setError(error);
+    }
+  }
+
+  async function handleDeleteParsedShot(sceneIndex, shotIndex) {
+    if (!parsedScriptObject.value) {
+      setError("当前解析 JSON 无法编辑，请先修复结构。");
+      return;
+    }
+
+    try {
+      const parsed = parseParsedScriptText();
+      const targetScene = parsed.scenes[sceneIndex];
+      const targetShot = Array.isArray(targetScene?.shots) ? targetScene.shots[shotIndex] : null;
+      if (!targetScene || !targetShot) {
+        throw new Error("未找到要删除的镜头。");
+      }
+
+      const shotLabel = String(targetShot.shot_id || shotIndex + 1).trim();
+      const confirmed = await confirmDanger?.(`确定删除镜头 ${shotLabel} 吗？`, "删除镜头");
+      if (!confirmed) {
+        return;
+      }
+
+      targetScene.shots.splice(shotIndex, 1);
+      if (isEditingParsedShot(sceneIndex, shotIndex)) {
+        cancelParsedShotEdit();
+      } else if (isEditingParsedShot(sceneIndex, shotIndex + 1)) {
+        parsedShotEditing.shotIndex = shotIndex - 1;
+      }
+
+      writeParsedScript(parsed);
+      setNotice(`镜头 ${shotLabel} 已删除。`);
     } catch (error) {
       setError(error);
     }
@@ -300,7 +500,7 @@ export function useParsedScriptEditor({
     if (text.includes("近景")) {
       return "closeup";
     }
-    if (text.includes("中")) {
+    if (text.includes("中景")) {
       return "medium";
     }
     if (text.includes("全景") || text.includes("远景")) {
@@ -337,10 +537,10 @@ export function useParsedScriptEditor({
     if (!text) {
       return "eye_level";
     }
-    if (text.includes("顶")) {
+    if (text.includes("俯")) {
       return "top_down";
     }
-    if (text.includes("俯")) {
+    if (text.includes("高")) {
       return "high_angle";
     }
     if (text.includes("仰")) {
@@ -422,7 +622,9 @@ export function useParsedScriptEditor({
       state.selectedSceneId = result.sceneId;
       state.selectedShotId = result.item.id;
       setNotice(
-        `已导入镜头卡草稿：${result.item.id}${result.unmatchedNames.length ? `，未匹配角色：${result.unmatchedNames.join("、")}` : ""}`
+        `已导入镜头卡草稿：${result.item.id}${
+          result.unmatchedNames.length ? `，未匹配角色：${result.unmatchedNames.join("、")}` : ""
+        }`
       );
     } catch (error) {
       setError(error);
@@ -473,7 +675,9 @@ export function useParsedScriptEditor({
       }
 
       setNotice(
-        `已导入 ${importedIds.length} 个镜头卡草稿${unmatchedNames.size ? `，未匹配角色：${[...unmatchedNames].join("、")}` : ""}`
+        `已导入 ${importedIds.length} 个镜头卡草稿${
+          unmatchedNames.size ? `，未匹配角色：${[...unmatchedNames].join("、")}` : ""
+        }`
       );
     } catch (error) {
       setError(error);
@@ -511,6 +715,9 @@ export function useParsedScriptEditor({
     startParsedShotEdit,
     cancelParsedShotEdit,
     saveParsedShotEdit,
+    handleAddParsedShot,
+    handleMoveParsedShot,
+    handleDeleteParsedShot,
     buildParsedShotStoryPayload,
     handleCopyReadableShot,
     getShotStoryValue,

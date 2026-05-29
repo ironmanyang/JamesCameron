@@ -55,6 +55,7 @@
             </el-button>
           </div>
         </div>
+        <p class="inline-note action-hint">{{ getDisabledHint("createEpisode") || "为当前系列新增一集，用来承接剧本和分镜。" }}</p>
 
         <div class="episode-strip">
           <div v-for="item in state.episodes" :key="item.id" class="episode-chip"
@@ -111,6 +112,7 @@
               </el-button>
             </div>
           </div>
+          <p class="inline-note action-hint">{{ getDisabledHint("analyzeScript") || getDisabledHint("saveRaw") || "先输入剧本，再用 AI 拆解或保存原稿。" }}</p>
           <el-input v-model="state.rawScript" class="field-textarea editor-textarea" type="textarea"
             :autosize="{ minRows: 22, maxRows: 30 }" resize="auto" placeholder="在这里粘贴或编写原始剧本内容。" />
         </article>
@@ -140,6 +142,7 @@
               </el-button>
             </div>
           </div>
+          <p class="inline-note action-hint">{{ getDisabledHint("saveParsed") || "可读视图编辑后的结构，会通过这里落回 JSON。" }}</p>
           <template v-if="parsedScriptViewMode === 'raw'">
             <el-input v-model="state.parsedScriptText" class="field-textarea editor-textarea code-textarea"
               type="textarea" :autosize="{ minRows: 22, maxRows: 30 }" resize="auto" placeholder="" />
@@ -165,32 +168,33 @@
 
               <div v-if="parsedScriptReadableScenes.length" class="form-stack">
                 <div v-for="(scene, sceneIndex) in parsedScriptReadableScenes"
-                  :key="scene.scene_id || scene.readable?.['场景编号']" class="meta-panel">
+                  :key="scene.scene_id || scene.readable?.['场景编号']" class="meta-panel readable-scene-panel">
+                  <div class="readable-scene-heading grid-span-full">
+                    <span class="readable-scene-kicker">场景编号</span>
+                    <strong class="readable-scene-title">{{ getReadableSceneInfo(scene)["场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
+                  </div>
                   <template v-if="isEditingParsedScene(sceneIndex)">
                     <div class="script-scene-editor grid-span-full">
-                      <div class="meta-row meta-row-wide">
-                        <span class="meta-label">场景编号</span>
-                        <strong
-                          class="meta-value">{{ getReadableSceneInfo(scene)["场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
+                      <div class="meta-row">
+                        <span class="meta-label">场景地点</span>
+                        <el-input v-model="parsedSceneEditing.location" class="field" type="text" placeholder="场景地点" />
                       </div>
-                      <div class="split-grid">
-                        <div class="meta-row">
-                          <span class="meta-label">场景地点</span>
-                          <el-input v-model="parsedSceneEditing.location" class="field" type="text"
-                            placeholder="场景地点" />
-                        </div>
-                        <div class="meta-row">
-                          <span class="meta-label">时间</span>
-                          <el-input v-model="parsedSceneEditing.time" class="field" type="text" placeholder="时间" />
-                        </div>
-                        <div class="meta-row meta-row-wide">
-                          <span class="meta-label">场景摘要</span>
-                          <el-input v-model="parsedSceneEditing.summary" class="field-textarea compact" type="textarea"
-                            :autosize="{ minRows: 2, maxRows: 4 }" placeholder="场景摘要" />
-                        </div>
+                      <div class="meta-row">
+                        <span class="meta-label">时间</span>
+                        <el-input v-model="parsedSceneEditing.time" class="field" type="text" placeholder="时间" />
+                      </div>
+                      <div class="meta-row">
+                        <span class="meta-label">镜头数</span>
+                        <strong
+                          class="meta-value">{{ getReadableSceneInfo(scene)["镜头数"] ?? (scene.shots || []).length }}</strong>
+                      </div>
+                      <div class="meta-row meta-row-wide">
+                        <span class="meta-label">场景摘要</span>
+                        <el-input v-model="parsedSceneEditing.summary" class="field-textarea compact" type="textarea"
+                          :autosize="{ minRows: 2, maxRows: 4 }" placeholder="场景摘要" />
                       </div>
 
-                      <div class="script-scene-actions">
+                      <div class="script-scene-actions meta-row-wide">
                         <el-button class="action-button dark compact-button"
                           @click.stop="saveParsedSceneEdit(sceneIndex)">
                           保存场景
@@ -202,11 +206,6 @@
                     </div>
                   </template>
                   <template v-else>
-                    <div class="meta-row meta-row-wide">
-                      <span class="meta-label">场景编号</span>
-                      <strong
-                        class="meta-value">{{ getReadableSceneInfo(scene)[" 场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
-                    </div>
                     <div class="meta-row">
                       <span class="meta-label">场景地点</span>
                       <strong
@@ -227,7 +226,10 @@
                       <strong
                         class="meta-value">{{ formatReadableField(getReadableSceneInfo(scene)["场景摘要"] || scene.summary) }}</strong>
                     </div>
-                    <div class="script-scene-actions">
+                    <div class="script-scene-actions grid-span-full">
+                      <el-button class="action-button warm compact-button" @click.stop="handleAddParsedShot(sceneIndex)">
+                        新增镜头
+                      </el-button>
                       <el-button class="action-button ghost compact-button"
                         @click.stop="startParsedSceneEdit(scene, sceneIndex)">
                         修改场景
@@ -265,17 +267,25 @@
                               <el-input v-model="parsedShotEditing.beat" class="field" type="text" placeholder="剧情节拍" />
                             </div>
                             <div class="script-shot-actions">
+                              <el-button class="action-button ghost compact-button" :disabled="shotIndex === 0"
+                                @click.stop="handleMoveParsedShot(sceneIndex, shotIndex, -1)">
+                                上移
+                              </el-button>
+                              <el-button class="action-button ghost compact-button"
+                                :disabled="shotIndex === (scene.shots || []).length - 1"
+                                @click.stop="handleMoveParsedShot(sceneIndex, shotIndex, 1)">
+                                下移
+                              </el-button>
+                              <el-button class="action-button ghost danger compact-button"
+                                @click.stop="handleDeleteParsedShot(sceneIndex, shotIndex)">
+                                删除
+                              </el-button>
                               <el-button class="action-button dark compact-button"
                                 @click.stop="saveParsedShotEdit(sceneIndex, shotIndex)">
                                 保存修改
                               </el-button>
                               <el-button class="action-button ghost compact-button" @click.stop="cancelParsedShotEdit">
                                 取消
-                              </el-button>
-                              <el-button class="action-button dark compact-button"
-                                :disabled="loading.importParsedShot || !state.selectedStoryboardId"
-                                @click.stop="handleImportReadableShot(scene, shot, sceneIndex, shotIndex)">
-                                {{ loading.importParsedShot ? "导入中..." : "导入为镜头卡草稿" }}
                               </el-button>
                             </div>
                           </div>
@@ -300,6 +310,20 @@
                               @click.stop="startParsedShotEdit(scene, shot, sceneIndex, shotIndex)">
                               修改分镜
                             </el-button>
+                            <el-button class="action-button ghost compact-button"
+                              :disabled="shotIndex === 0"
+                              @click.stop="handleMoveParsedShot(sceneIndex, shotIndex, -1)">
+                              上移
+                            </el-button>
+                            <el-button class="action-button ghost compact-button"
+                              :disabled="shotIndex === (scene.shots || []).length - 1"
+                              @click.stop="handleMoveParsedShot(sceneIndex, shotIndex, 1)">
+                              下移
+                            </el-button>
+                            <el-button class="action-button ghost danger compact-button"
+                              @click.stop="handleDeleteParsedShot(sceneIndex, shotIndex)">
+                              删除
+                            </el-button>
                             <el-button class="action-button dark compact-button"
                               :disabled="loading.importParsedShot || !state.selectedStoryboardId"
                               @click.stop="handleImportReadableShot(scene, shot, sceneIndex, shotIndex)">
@@ -312,13 +336,12 @@
                   </div>
 
                   <div class="grid-span-full">
-
-
                     <el-button class="action-button warm full-width"
                       :disabled="loading.importParsedShot || !state.selectedStoryboardId || !parsedScriptReadableScenes.length"
                       @click="handleImportAllReadableShots">
                       {{ loading.importParsedShot ? "导入中..." : "全部导入为镜头卡草稿" }}
                     </el-button>
+                    <p class="inline-note action-hint">{{ getDisabledHint("importAllShots") || "将当前解析结果中的全部镜头一次性导入为草稿" }}</p>
                   </div>
 
                 </div>

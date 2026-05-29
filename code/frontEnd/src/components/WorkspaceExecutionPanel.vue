@@ -60,6 +60,7 @@
                 @click="handleAssembleShotPackage">
                 {{ loading.shotPackage ? "生成中..." : "生成当前镜头包" }}
               </el-button>
+              <p class="inline-note action-hint">{{ loading.shotPackage ? "镜头包正在生成中..." : "先把当前镜头的剧情、对白和参考素材组装成镜头包。" }}</p>
 
               <div class="meta-panel">
                 <div class="meta-row">
@@ -83,6 +84,7 @@
                       {{ loading.createShotBatch ? "处理中..." : "批量生成草稿批次" }}
                     </el-button>
                   </div>
+                  <p class="inline-note action-hint">{{ loading.createShotBatch ? "批次正在生成中..." : (!state.selectedShotIds.length ? "请先勾选至少一个镜头" : "可按勾选镜头生成一个批次，或直接批量生成全部批次。") }}</p>
                 </div>
               </div>
 
@@ -220,6 +222,7 @@
                 @click="handleCreateRenderTask">
                 {{ loading.createRender ? "生成中..." : "生成提交草稿" }}
               </el-button>
+              <p class="inline-note action-hint">{{ getDisabledHint("createRender") || "先生成快照，再产出最终提交给 Seedance 的 request_body。" }}</p>
 
               <div class="subsection">
                 <div class="subsection-header">
@@ -266,6 +269,9 @@
                         {{ loading.retryShotBatch ? "重试中..." : "重试失败项" }}
                       </el-button>
                     </div>
+                    <p class="inline-note action-hint">
+                      {{ getShotBatchActionHint(batch, "submit") || getShotBatchActionHint(batch, "refresh") || getShotBatchActionHint(batch, "retry") }}
+                    </p>
                   </div>
                   <div v-if="!state.shotBatches.length" class="empty-state">当前还没有镜头批次。</div>
                 </div>
@@ -336,6 +342,7 @@
                 @click="handleAssembleSceneDirectPackage">
                 {{ loading.sceneDirectPackage ? "组装中..." : "组装场景包" }}
               </el-button>
+              <p class="inline-note action-hint">{{ loading.sceneDirectPackage ? "场景包正在组装中..." : "把场景摘要、节拍、参考素材和输出参数组装成一个场景级生成包。" }}</p>
 
 
               <div class="focus-card stack-block">
@@ -487,6 +494,7 @@
                 @click="handleCreateSceneDirectTask">
                 {{ loading.createSceneDirectTask ? "生成中..." : "生成场景任务草稿" }}
               </el-button>
+              <p class="inline-note action-hint">{{ loading.createSceneDirectTask ? "场景任务草稿正在生成中..." : "基于当前场景包生成一条场景级任务草稿。" }}</p>
             </template>
           </div>
 

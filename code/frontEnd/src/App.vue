@@ -483,6 +483,65 @@ function singlePreviewList(relativePath) {
   return url ? [url] : [];
 }
 
+function getDisabledHint(key) {
+  const hints = {
+    createSeries: loading.createSeries ? "系列正在创建中..." : !forms.seriesName.trim() ? "请输入系列名称" : "",
+    createEpisode: loading.createEpisode ? "剧集正在创建中..." : !forms.episodeName.trim() ? "请输入剧集名称" : "",
+    analyzeScript: loading.analyzeScript ? "剧本正在分析中..." : !state.rawScript.trim() ? "请先输入原始剧本" : "",
+    saveRaw: loading.saveRaw ? "剧本正在保存中..." : !state.rawScript.trim() ? "原始剧本为空" : "",
+    saveParsed: loading.saveParsed ? "解析 JSON 正在保存中..." : !state.parsedScriptText.trim() ? "解析 JSON 为空" : "",
+    importAllShots: loading.importParsedShot
+      ? "正在导入镜头草稿..."
+      : !state.selectedStoryboardId
+        ? "请先选择一个分镜板"
+        : !workspaceDerived.parsedScriptReadableScenes.value?.length
+          ? "当前解析结果没有可导入镜头"
+          : "",
+    createShot: loading.createShot ? "镜头卡正在生成中..." : !forms.shotSceneId ? "请先选择关联场景" : "",
+    createRender: loading.createRender ? "快照和提交草稿正在生成中..." : !state.selectedShotId ? "请先选中一个镜头卡" : "",
+    createShotBatchSelected: loading.createShotBatch ? "批次正在生成中..." : !state.selectedShotIds.length ? "请先勾选至少一个镜头" : "",
+    createShotBatchAll: loading.createShotBatch ? "批次正在生成中..." : !state.shots.length ? "当前分镜板没有镜头" : "",
+    submitShotBatch: loading.submitShotBatch ? "批次正在提交中..." : !state.selectedShotBatchId ? "请先选择一个批次" : "",
+    refreshShotBatch: loading.refreshShotBatch ? "批次状态正在刷新中..." : !state.selectedShotBatchId ? "请先选择一个批次" : "",
+    saveShot: loading.updateShot ? "镜头卡正在保存中..." : !state.selectedShotId ? "请先选中一个镜头卡" : ""
+  };
+
+  return hints[key] || "";
+}
+
+function getShotBatchActionHint(batch, action) {
+  const item = batch || {};
+
+  if (action === "submit") {
+    if (loading.submitShotBatch) {
+      return "批次正在提交中...";
+    }
+    if (!getShotBatchSubmittableCount(item)) {
+      return "当前批次没有可提交的未提交/失败镜头。";
+    }
+    return "提交当前批次中未提交或失败的镜头任务。";
+  }
+
+  if (action === "refresh") {
+    if (loading.refreshShotBatch) {
+      return "批次状态正在刷新中...";
+    }
+    return "刷新当前批次的提交状态和执行进度。";
+  }
+
+  if (action === "retry") {
+    if (loading.retryShotBatch) {
+      return "失败项正在重试中...";
+    }
+    if (!item.failed_count) {
+      return "当前批次没有失败项可重试。";
+    }
+    return "仅重试当前批次中失败的镜头任务。";
+  }
+
+  return "";
+}
+
 async function confirmDanger(message, title = "确认操作") {
   try {
     await ElMessageBox.confirm(message, title, {
@@ -608,6 +667,7 @@ const parsedScriptEditor = useParsedScriptEditor({
   createShot,
   loadProductionData,
   loadShotsForStoryboard,
+  confirmDanger,
   setNotice,
   setError
 });
@@ -736,7 +796,9 @@ provideWorkspaceContext(
       setNotice,
       setError,
       assetUrl,
-      singlePreviewList
+      singlePreviewList,
+      getDisabledHint,
+      getShotBatchActionHint
     },
     editing: workspaceEditing,
     localHelpers: workspaceLocalHelpers,

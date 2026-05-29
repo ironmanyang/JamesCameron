@@ -223,6 +223,10 @@ h3 {
   color: rgba(237, 242, 247, 0.7);
 }
 
+.action-hint {
+  margin-top: 8px;
+}
+
 .lead {
   max-width: 760px;
 }
@@ -1743,8 +1747,34 @@ h3 {
 
 .script-scene-editor {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   min-width: 0;
+}
+
+.readable-scene-panel {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.readable-scene-heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.readable-scene-kicker {
+  color: rgba(200, 255, 184, 0.72);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.readable-scene-title {
+  font-size: 18px;
+  letter-spacing: -0.03em;
+  color: rgba(244, 255, 240, 0.96);
 }
 
 .script-scene-actions {
