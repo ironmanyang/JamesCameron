@@ -1,6 +1,6 @@
 <template>
   <section class="masthead">
-    <div>
+    <div class="masthead-copy">
       <p class="eyebrow">AI 视频工作流</p>
       <h1>本地生产工作台</h1>
       <p class="lead">
@@ -12,8 +12,8 @@
     <div class="status-panel ">
       <div class="status-chip">
         <span class="status-dot" :class="health"></span>
-        <strong>后端服务</strong>
-        <span>{{ formatHealth(health) }}</span>
+        <strong class="status-chip-title">后端服务</strong>
+        <span class="status-chip-value">{{ formatHealth(health) }}</span>
       </div>
       <p class="status-copy">
         角色和场景参考图会直接写入本地目录，前端回显也读取同一份本地数据源。

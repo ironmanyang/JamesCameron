@@ -4,9 +4,9 @@
       :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
       element-loading-background="rgba(7, 10, 14, 0.2)" class="panel ">
       <div class="panel-header">
-        <div>
+        <div class="panel-header-copy">
           <p class="panel-kicker">工作区</p>
-          <h2>选择系列</h2>
+          <h2 class="panel-title">选择系列</h2>
         </div>
       </div>
 
@@ -22,9 +22,9 @@
               </div>
             </template>
             <template v-else>
-              <strong>{{ item.name }}</strong>
-              <span>{{ item.slug }}</span>
-              <small>{{ item.description || "暂无简介" }}</small>
+              <strong class="item-title">{{ item.name }}</strong>
+              <span class="item-meta">{{ item.slug }}</span>
+              <small class="item-copy">{{ item.description || "暂无简介" }}</small>
             </template>
           </div>
           <div class="item-actions">
@@ -56,9 +56,9 @@
       :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
       element-loading-background="rgba(7, 10, 14, 0.16)" class="panel">
       <div class="panel-header">
-        <div>
+        <div class="panel-header-copy">
           <p class="panel-kicker">系列</p>
-          <h2>系列库</h2>
+          <h2 class="panel-title">系列库</h2>
         </div>
         <span class="pill">共：{{ state.series.length }}</span>
       </div>
@@ -75,9 +75,9 @@
 
     <section class="panel">
       <div class="panel-header">
-        <div>
+        <div class="panel-header-copy">
           <p class="panel-kicker">反馈</p>
-          <h2>状态面板</h2>
+          <h2 class="panel-title">状态面板</h2>
         </div>
       </div>
 
@@ -86,25 +86,25 @@
       <p v-if="state.error" class="message error">{{ state.error }}</p>
 
       <div class="meta-list">
-        <div>
-          <span>系列</span>
-          <strong>{{ selectedSeries?.name || "暂无" }}</strong>
+        <div class="meta-item">
+          <span class="meta-label">系列</span>
+          <strong class="meta-value">{{ selectedSeries?.name || "暂无" }}</strong>
         </div>
-        <div>
-          <span>剧集</span>
-          <strong>{{ selectedEpisode?.name || "暂无" }}</strong>
+        <div class="meta-item">
+          <span class="meta-label">剧集</span>
+          <strong class="meta-value">{{ selectedEpisode?.name || "暂无" }}</strong>
         </div>
-        <div>
-          <span>分镜板</span>
-          <strong>{{ selectedStoryboard?.id || "暂无" }}</strong>
+        <div class="meta-item">
+          <span class="meta-label">分镜板</span>
+          <strong class="meta-value">{{ selectedStoryboard?.id || "暂无" }}</strong>
         </div>
-        <div>
-          <span>生产模式</span>
-          <strong>{{ formatStoryboardProductionMode(selectedStoryboardProductionMode) }}</strong>
+        <div class="meta-item">
+          <span class="meta-label">生产模式</span>
+          <strong class="meta-value">{{ formatStoryboardProductionMode(selectedStoryboardProductionMode) }}</strong>
         </div>
-        <div>
-          <span>输出根目录</span>
-          <strong>output/</strong>
+        <div class="meta-item">
+          <span class="meta-label">输出根目录</span>
+          <strong class="meta-value">output/</strong>
         </div>
       </div>
     </section>

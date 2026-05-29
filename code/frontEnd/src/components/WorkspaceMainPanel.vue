@@ -5,34 +5,34 @@
         <div class="hero-grid hero-grid-compact">
           <div class="hero-copy hero-copy-compact">
             <div class="panel-header hero-header">
-              <div>
+              <div class="panel-header-copy">
                 <p class="panel-kicker">当前系列</p>
-                <h2>{{ selectedSeries?.name || "尚未选择系列" }}</h2>
+                <h2 class="panel-title">{{ selectedSeries?.name || "尚未选择系列" }}</h2>
               </div>
               <span v-if="selectedSeries" class="series-slug">{{ selectedSeries.slug }}</span>
             </div>
             <p class="hero-lead hero-lead-compact">
-              当前工作区会跟随已选系列切换，右侧统计只显示这个系列的角色、场景、分镜板和任务数量。
+              {{ selectedSeries?.description || "暂无简介" }}
             </p>
           </div>
 
           <div class="hero-summary">
             <div class="summary-grid summary-grid-compact">
               <article class="summary-card">
-                <span>角色</span>
-                <strong>{{ state.assets.characters }}</strong>
+                <span class="summary-card-label">角色</span>
+                <strong class="summary-card-value">{{ state.assets.characters }}</strong>
               </article>
               <article class="summary-card">
-                <span>场景</span>
-                <strong>{{ state.assets.scenes }}</strong>
+                <span class="summary-card-label">场景</span>
+                <strong class="summary-card-value">{{ state.assets.scenes }}</strong>
               </article>
               <article class="summary-card">
-                <span>分镜板</span>
-                <strong>{{ state.assets.storyboards }}</strong>
+                <span class="summary-card-label">分镜板</span>
+                <strong class="summary-card-value">{{ state.assets.storyboards }}</strong>
               </article>
               <article class="summary-card">
-                <span>任务</span>
-                <strong>{{ state.assets.jobs }}</strong>
+                <span class="summary-card-label">任务</span>
+                <strong class="summary-card-value">{{ state.assets.jobs }}</strong>
               </article>
             </div>
           </div>
@@ -43,9 +43,9 @@
         :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
         element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
         <div class="panel-header">
-          <div>
+          <div class="panel-header-copy">
             <p class="panel-kicker">剧集</p>
-            <h2>剧本与结构化拆解</h2>
+            <h2 class="panel-title">剧本与结构化拆解</h2>
           </div>
           <div class="inline-actions panel-header-actions">
             <el-input v-model="forms.episodeName" class="field inline-field" type="text" placeholder="输入剧集名称" />
@@ -64,12 +64,12 @@
                 <div class="item-editor">
                   <el-input v-model="inlineEditing.episodeName" class="field item-inline-field" type="text"
                     placeholder="输入剧集名称" />
-                  <span>{{ item.id }}</span>
+                  <span class="item-meta">{{ item.id }}</span>
                 </div>
               </template>
               <template v-else>
-                <strong>{{ item.name }}</strong>
-                <span>{{ item.id }}</span>
+                <strong class="item-title">{{ item.name }}</strong>
+                <span class="item-meta">{{ item.id }}</span>
               </template>
             </div>
             <div class="item-actions episode-item-actions">
@@ -98,9 +98,9 @@
           :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
           element-loading-background="rgba(7, 10, 14, 0.18)" class="panel editor-panel">
           <div class="panel-header">
-            <div>
+            <div class="panel-header-copy">
               <p class="panel-kicker">原始剧本</p>
-              <h2>剧本输入区</h2>
+              <h2 class="panel-title">剧本输入区</h2>
             </div>
             <div class="inline-actions compact-actions panel-header-actions">
               <el-button class="action-button ghost" :disabled="loading.analyzeScript" @click="handleAnalyzeScript">
@@ -119,9 +119,9 @@
           :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
           element-loading-background="rgba(7, 10, 14, 0.18)" class="panel editor-panel">
           <div class="panel-header">
-            <div>
+            <div class="panel-header-copy">
               <p class="panel-kicker">结构化结果</p>
-              <h2>解析 JSON</h2>
+              <h2 class="panel-title">解析 JSON</h2>
             </div>
             <div class="inline-actions compact-actions panel-header-actions">
               <el-button-group class="segmented-button-group">
@@ -148,16 +148,17 @@
             <div v-if="parsedScriptObject" class="readable-script-view">
               <div v-if="parsedScriptReadableOutline" class="meta-panel">
                 <div class="meta-row">
-                  <span>剧集标题</span>
-                  <strong>{{ formatReadableField(parsedScriptReadableOutline["剧集标题"]) }}</strong>
+                  <span class="meta-label">剧集标题</span>
+                  <strong class="meta-value">{{ formatReadableField(parsedScriptReadableOutline["剧集标题"]) }}</strong>
                 </div>
                 <div class="meta-row">
-                  <span>场景总数</span>
-                  <strong>{{ parsedScriptReadableOutline["场景总数"] ?? 0 }}</strong>
+                  <span class="meta-label">场景总数</span>
+                  <strong class="meta-value">{{ parsedScriptReadableOutline["场景总数"] ?? 0 }}</strong>
                 </div>
                 <div class="meta-row">
-                  <span>角色总览</span>
-                  <strong>{{ (parsedScriptReadableOutline["角色总览"] || []).join("、") || "暂无" }}</strong>
+                  <span class="meta-label">角色总览</span>
+                  <strong
+                    class="meta-value">{{ (parsedScriptReadableOutline["角色总览"] || []).join("、") || "暂无" }}</strong>
                 </div>
               </div>
 
@@ -167,22 +168,23 @@
                   :key="scene.scene_id || scene.readable?.['场景编号']" class="meta-panel">
                   <template v-if="isEditingParsedScene(sceneIndex)">
                     <div class="script-scene-editor grid-span-full">
-                      <div class="meta-row-wide">
-                        <span>场景编号</span>
-                        <strong>{{ getReadableSceneInfo(scene)["场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
+                      <div class="meta-row meta-row-wide">
+                        <span class="meta-label">场景编号</span>
+                        <strong
+                          class="meta-value">{{ getReadableSceneInfo(scene)["场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
                       </div>
                       <div class="split-grid">
                         <div class="meta-row">
-                          <span>场景地点</span>
+                          <span class="meta-label">场景地点</span>
                           <el-input v-model="parsedSceneEditing.location" class="field" type="text"
                             placeholder="场景地点" />
                         </div>
                         <div class="meta-row">
-                          <span>时间</span>
+                          <span class="meta-label">时间</span>
                           <el-input v-model="parsedSceneEditing.time" class="field" type="text" placeholder="时间" />
                         </div>
                         <div class="meta-row meta-row-wide">
-                          <span>场景摘要</span>
+                          <span class="meta-label">场景摘要</span>
                           <el-input v-model="parsedSceneEditing.summary" class="field-textarea compact" type="textarea"
                             :autosize="{ minRows: 2, maxRows: 4 }" placeholder="场景摘要" />
                         </div>
@@ -200,25 +202,30 @@
                     </div>
                   </template>
                   <template v-else>
-                    <div class="meta-row-wide">
-                      <span>场景编号</span>
-                      <strong>{{ getReadableSceneInfo(scene)[" 场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
+                    <div class="meta-row meta-row-wide">
+                      <span class="meta-label">场景编号</span>
+                      <strong
+                        class="meta-value">{{ getReadableSceneInfo(scene)[" 场景编号"] ?? scene.scene_id ?? "暂无" }}</strong>
                     </div>
                     <div class="meta-row">
-                      <span>场景地点</span>
-                      <strong>{{ formatReadableField(getReadableSceneInfo(scene)["场景地点"] || scene.location) }}</strong>
+                      <span class="meta-label">场景地点</span>
+                      <strong
+                        class="meta-value">{{ formatReadableField(getReadableSceneInfo(scene)["场景地点"] || scene.location) }}</strong>
                     </div>
                     <div class="meta-row">
-                      <span>时间</span>
-                      <strong>{{ formatReadableField(getReadableSceneInfo(scene)["时间"] || scene.time) }}</strong>
+                      <span class="meta-label">时间</span>
+                      <strong
+                        class="meta-value">{{ formatReadableField(getReadableSceneInfo(scene)["时间"] || scene.time) }}</strong>
                     </div>
                     <div class="meta-row">
-                      <span>镜头数</span>
-                      <strong>{{ getReadableSceneInfo(scene)["镜头数"] ?? (scene.shots || []).length }}</strong>
+                      <span class="meta-label">镜头数</span>
+                      <strong
+                        class="meta-value">{{ getReadableSceneInfo(scene)["镜头数"] ?? (scene.shots || []).length }}</strong>
                     </div>
                     <div class="meta-row meta-row-wide">
-                      <span>场景摘要</span>
-                      <strong>{{ formatReadableField(getReadableSceneInfo(scene)["场景摘要"] || scene.summary) }}</strong>
+                      <span class="meta-label">场景摘要</span>
+                      <strong
+                        class="meta-value">{{ formatReadableField(getReadableSceneInfo(scene)["场景摘要"] || scene.summary) }}</strong>
                     </div>
                     <div class="script-scene-actions">
                       <el-button class="action-button ghost compact-button"
@@ -235,7 +242,8 @@
                       <div class="item-body">
                         <template v-if="isEditingParsedShot(sceneIndex, shotIndex)">
                           <div class="script-shot-editor">
-                            <strong>镜头 {{ getReadableShotInfo(shot)["镜头编号"] ?? shot.shot_id ?? "?" }}</strong>
+                            <strong class="item-title">镜头
+                              {{ getReadableShotInfo(shot)["镜头编号"] ?? shot.shot_id ?? "?" }}</strong>
                             <el-input v-model="parsedShotEditing.description" class="field-textarea compact"
                               type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="画面描述" />
                             <div class="split-grid">
@@ -273,14 +281,19 @@
                           </div>
                         </template>
                         <template v-else>
-                          <strong>镜头 {{ getReadableShotInfo(shot)["镜头编号"] ?? shot.shot_id ?? "?" }}</strong>
-                          <small>{{ formatReadableField(getReadableShotInfo(shot)["画面描述"] || shot.description) }}</small>
-                          <small>{{ formatReadableField(getReadableShotInfo(shot)["镜头信息"] || shot.camera?.summary || formatLegacyCameraSummary(shot.camera)) }}</small>
-                          <small>角色：{{ formatReadableField(getReadableShotInfo(shot)["出场角色"] || (shot.characters ||
-                            []).join("、")) }}</small>
-                          <small>对白：{{ formatReadableField(getReadableShotInfo(shot)["对白"] ||
+                          <strong class="item-title">镜头
+                            {{ getReadableShotInfo(shot)["镜头编号"] ?? shot.shot_id ?? "?" }}</strong>
+                          <small
+                            class="item-copy">{{ formatReadableField(getReadableShotInfo(shot)["画面描述"] || shot.description) }}</small>
+                          <small
+                            class="item-copy">{{ formatReadableField(getReadableShotInfo(shot)["镜头信息"] || shot.camera?.summary || formatLegacyCameraSummary(shot.camera)) }}</small>
+                          <small class="item-copy">角色：{{ formatReadableField(getReadableShotInfo(shot)["出场角色"] ||
+                            (shot.characters ||
+                              []).join("、")) }}</small>
+                          <small class="item-copy">对白：{{ formatReadableField(getReadableShotInfo(shot)["对白"] ||
                             formatDialogueEntries(shot.dialogues)) }}</small>
-                          <small>情绪 / 节拍：{{ formatReadableField(getReadableShotInfo(shot)["情绪"] || shot.emotion) }} ·
+                          <small class="item-copy">情绪 / 节拍：{{ formatReadableField(getReadableShotInfo(shot)["情绪"] ||
+                            shot.emotion) }} ·
                             {{ formatReadableField(getReadableShotInfo(shot)["剧情节拍"] || shot.beat) }}</small>
                           <div class="script-shot-actions">
                             <el-button class="action-button ghost compact-button"
@@ -325,9 +338,9 @@
           :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
           element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
           <div class="panel-header">
-            <div>
+            <div class="panel-header-copy">
               <p class="panel-kicker">角色</p>
-              <h2>角色创建</h2>
+              <h2 class="panel-title">角色创建</h2>
             </div>
           </div>
 
@@ -335,7 +348,8 @@
             <div class="compact-form-grid compact-form-grid-2">
               <el-input v-model="forms.characterName" class="field" type="text" placeholder="输入角色名称" />
               <div class="action-tile">
-                <el-button class="action-button warm" :disabled="loading.createCharacter" @click="handleCreateCharacter">
+                <el-button class="action-button warm" :disabled="loading.createCharacter"
+                  @click="handleCreateCharacter">
                   {{ loading.createCharacter ? "创建中..." : "新建角色" }}
                 </el-button>
               </div>
@@ -359,10 +373,10 @@
                   </div>
                 </template>
                 <template v-else>
-                  <strong>{{ item.name }}</strong>
-                  <span>{{ item.id }}</span>
-                  <small>{{ formatStatus(item.status) }}</small>
-                  <small>{{ item.brief || "暂无角色简介" }}</small>
+                  <strong class="item-title">{{ item.name }}</strong>
+                  <span class="item-meta">{{ item.id }}</span>
+                  <small class="item-copy">{{ formatStatus(item.status) }}</small>
+                  <small class="item-copy">{{ item.brief || "暂无角色简介" }}</small>
                 </template>
               </div>
               <div class="item-actions item-actions-block">
@@ -390,9 +404,9 @@
           :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
           element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
           <div class="panel-header">
-            <div>
+            <div class="panel-header-copy">
               <p class="panel-kicker">场景</p>
-              <h2>场景创建</h2>
+              <h2 class="panel-title">场景创建</h2>
             </div>
           </div>
 
@@ -421,10 +435,10 @@
                   </div>
                 </template>
                 <template v-else>
-                  <strong>{{ item.name }}</strong>
-                  <span>{{ item.id }}</span>
-                  <small>{{ formatStatus(item.status) }}</small>
-                  <small>{{ item.description || "暂无场景描述" }}</small>
+                  <strong class="item-title">{{ item.name }}</strong>
+                  <span class="item-meta">{{ item.id }}</span>
+                  <small class="item-copy">{{ formatStatus(item.status) }}</small>
+                  <small class="item-copy">{{ item.description || "暂无场景描述" }}</small>
                 </template>
               </div>
               <div class="item-actions item-actions-block">
@@ -454,9 +468,9 @@
           :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
           element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
           <div class="panel-header">
-            <div>
+            <div class="panel-header-copy">
               <p class="panel-kicker">角色工坊</p>
-              <h2>角色圣经</h2>
+              <h2 class="panel-title">角色圣经</h2>
             </div>
             <div class="inline-actions panel-header-actions">
               <el-button class="action-button warm" :disabled="loading.characterAssets || !selectedCharacter"
@@ -473,14 +487,15 @@
 
           <div v-if="selectedCharacter" class="lab-stack">
             <div class="focus-card">
-              <span>当前角色</span>
-              <strong>{{ selectedCharacter.name }}</strong>
-              <small>{{ selectedCharacter.id }} · {{ formatStatus(selectedCharacter.status) }}</small>
+              <span class="focus-label">当前角色</span>
+              <strong class="focus-value">{{ selectedCharacter.name }}</strong>
+              <small class="focus-meta">{{ selectedCharacter.id }} ·
+                {{ formatStatus(selectedCharacter.status) }}</small>
             </div>
 
             <div class="upload-panel">
-              <div>
-                <strong>上传角色参考图</strong>
+              <div class="upload-panel-copy">
+                <strong class="upload-panel-title">上传角色参考图</strong>
                 <p class="upload-copy">
                   适用于固定角色。上传后，角色生成会优先参考你提供的图片，而不是只靠文字描述。
                 </p>
@@ -506,8 +521,8 @@
             <div v-if="selectedCharacterSourceEntries.length" class="reference-grid">
               <div v-for="image in selectedCharacterSourceEntries" :key="image.key" class="reference-card">
                 <div class="reference-header">
-                  <strong>上传参考</strong>
-                  <small>{{ image.label }}</small>
+                  <strong class="reference-title">上传参考</strong>
+                  <small class="reference-meta">{{ image.label }}</small>
                 </div>
                 <el-button class="action-button ghost danger compact-button"
                   :disabled="loading.deleteCharacterSourceImage" @click="handleDeleteCharacterSourceImage(image.path)">
@@ -520,8 +535,8 @@
 
             <div class="anchor-grid">
               <article v-for="([key, value]) in selectedCharacterAnchorEntries" :key="key" class="anchor-card">
-                <span>{{ formatAnchorKey(key) }}</span>
-                <strong>{{ value || "待生成" }}</strong>
+                <span class="anchor-label">{{ formatAnchorKey(key) }}</span>
+                <strong class="anchor-value">{{ value || "待生成" }}</strong>
               </article>
             </div>
 
@@ -529,8 +544,8 @@
               <div v-for="image in selectedCharacterImageEntries" :key="image.key"
                 class="reference-card reference-card-large media-span-two">
                 <div class="reference-header">
-                  <strong>{{ image.label }}</strong>
-                  <small>{{ image.path || "尚未生成" }}</small>
+                  <strong class="reference-title">{{ image.label }}</strong>
+                  <small class="reference-meta">{{ image.path || "尚未生成" }}</small>
                 </div>
                 <el-image v-if="image.path" class="preview-image preview-image-large" :src="assetUrl(image.path)"
                   :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="contain"
@@ -541,12 +556,12 @@
 
             <div v-if="state.selectedCharacterBible" class="meta-panel">
               <div class="meta-row">
-                <span>角色概述</span>
-                <strong>{{ state.selectedCharacterBible.summary || "暂无" }}</strong>
+                <span class="meta-label">角色概述</span>
+                <strong class="meta-value">{{ state.selectedCharacterBible.summary || "暂无" }}</strong>
               </div>
               <div class="meta-row">
-                <span>核心身份</span>
-                <strong>{{ state.selectedCharacterBible.bible?.core_identity || "暂无" }}</strong>
+                <span class="meta-label">核心身份</span>
+                <strong class="meta-value">{{ state.selectedCharacterBible.bible?.core_identity || "暂无" }}</strong>
               </div>
             </div>
           </div>
@@ -558,9 +573,9 @@
           :element-loading-svg="loadingSpinnerSvg" :element-loading-svg-view-box="loadingSpinnerViewBox"
           element-loading-background="rgba(7, 10, 14, 0.18)" class="panel">
           <div class="panel-header">
-            <div>
+            <div class="panel-header-copy">
               <p class="panel-kicker">场景工坊</p>
-              <h2>场景包</h2>
+              <h2 class="panel-title">场景包</h2>
             </div>
             <el-button class="action-button warm" :disabled="loading.sceneAssets || !selectedScene"
               @click="handleGenerateSceneAssets">
@@ -570,16 +585,16 @@
 
           <div v-if="selectedScene" class="lab-stack">
             <div class="focus-card">
-              <span>当前场景</span>
-              <strong>{{ selectedScene.name }}</strong>
-              <small>{{ selectedScene.id }} · {{ formatStatus(selectedScene.status) }}</small>
+              <span class="focus-label">当前场景</span>
+              <strong class="focus-value">{{ selectedScene.name }}</strong>
+              <small class="focus-meta">{{ selectedScene.id }} · {{ formatStatus(selectedScene.status) }}</small>
             </div>
 
             <div class="reference-grid">
               <div v-for="image in selectedSceneImageEntries" :key="image.key" class="reference-card">
                 <div class="reference-header">
-                  <strong>{{ image.label }}</strong>
-                  <small>{{ image.path || "尚未生成" }}</small>
+                  <strong class="reference-title">{{ image.label }}</strong>
+                  <small class="reference-meta">{{ image.path || "尚未生成" }}</small>
                 </div>
                 <el-image v-if="image.path" class="preview-image" :src="assetUrl(image.path)"
                   :preview-src-list="singlePreviewList(image.path)" :initial-index="0" fit="cover" preview-teleported />
@@ -589,16 +604,16 @@
 
             <div v-if="state.selectedScenePackage" class="meta-panel">
               <div class="meta-row">
-                <span>场景概述</span>
-                <strong>{{ state.selectedScenePackage.summary || "暂无" }}</strong>
+                <span class="meta-label">场景概述</span>
+                <strong class="meta-value">{{ state.selectedScenePackage.summary || "暂无" }}</strong>
               </div>
               <div class="meta-row">
-                <span>光线</span>
-                <strong>{{ state.selectedScenePackage.visual_profile?.lighting || "暂无" }}</strong>
+                <span class="meta-label">光线</span>
+                <strong class="meta-value">{{ state.selectedScenePackage.visual_profile?.lighting || "暂无" }}</strong>
               </div>
               <div class="meta-row">
-                <span>色调</span>
-                <strong>{{ state.selectedScenePackage.visual_profile?.palette || "暂无" }}</strong>
+                <span class="meta-label">色调</span>
+                <strong class="meta-value">{{ state.selectedScenePackage.visual_profile?.palette || "暂无" }}</strong>
               </div>
             </div>
           </div>
